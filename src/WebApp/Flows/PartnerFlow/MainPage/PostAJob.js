@@ -5,6 +5,8 @@ import axios from "../../../../api/axiosInstance";
 import defaultCompanyLogo from "../../../../assets/default-company-logo.png";
 
 import { useTabContext } from "./UserHomePageContext/HomePageContext";
+import { IN_STATES } from "../../../../constants/locations";
+import { StateDropdown } from "../../../../components/StateDropdown";
 
 const SuccessModal = ({ onOk }) => (
   <div
@@ -62,7 +64,7 @@ const SuccessModal = ({ onOk }) => (
         className="w-full py-3 rounded-xl bg-teal-600 text-white font-semibold text-sm hover:bg-teal-700 active:scale-95 transition-all"
         style={{ fontFamily: "'Poppins', sans-serif" }}
       >
-        OK â€” View My Posts
+        OK - View My Posts
       </button>
     </div>
     <style>{`
@@ -81,8 +83,6 @@ const SuccessModal = ({ onOk }) => (
     `}</style>
   </div>
 );
-
-import { IN_STATES } from "../../../../constants/locations";
 
 const PostAJob = () => {
   const { saveJob, handleSelectTab } = useTabContext();
@@ -104,7 +104,10 @@ const PostAJob = () => {
       name: "Advanced Robotics & Human-Machine Collaboration",
     },
     { id: "renewable-energy", name: "Renewable Energy & Grid Innovation" },
-    { id: "architecture-built-environment", name: "Architecture & Built Environment" },
+    {
+      id: "architecture-built-environment",
+      name: "Architecture & Built Environment",
+    },
   ];
 
   const [formData, setFormData] = useState({
@@ -168,10 +171,7 @@ const PostAJob = () => {
         return;
       }
       try {
-        const countryIds =
-          formData.country === "India"
-            ? "IN"
-            : "IN";
+        const countryIds = formData.country === "India" ? "IN" : "IN";
 
         const resp = await axios.get("/api/cities", {
           params: {
@@ -543,10 +543,11 @@ const PostAJob = () => {
             </div>
 
             <div className="flex flex-col gap-1">
+              {/* add custom style modal for select tag for states - 07-09-2026 */}
               <label htmlFor="state" className="block text-gray-700 text-sm">
                 {stateLabel} *
               </label>
-              <select
+              {/* <select
                 id="state"
                 name="state"
                 value={formData.state}
@@ -562,7 +563,15 @@ const PostAJob = () => {
                     {s}
                   </option>
                 ))}
-              </select>
+              </select> */}
+
+              <StateDropdown
+                label={stateLabel}
+                value={formData.state}
+                onChange={(val) => setFormData((p) => ({ ...p, state: val }))}
+                options={stateList}
+                className={locationInputCls}
+              />
             </div>
 
             <div className="relative flex flex-col gap-1">
@@ -804,13 +813,13 @@ const PostAJob = () => {
           />
         </div>
 
-        {/* Internship Type â€” select (Free/Stipend) + Paid radio */}
+        {/* Internship Type - select (Free/Stipend) + Paid radio */}
         <div>
           <label className="block text-gray-700 font-medium mb-3">
             Internship Type
           </label>
 
-          {/* Hidden input for form validation â€” fires if no type is selected */}
+          {/* Hidden input for form validation - fires if no type is selected */}
           <input
             type="text"
             value={formData.internshipType}
@@ -921,7 +930,7 @@ const PostAJob = () => {
           )}
         </div>
 
-        {/* Compensation Details â€” shown only for STIPEND or PAID */}
+        {/* Compensation Details - shown only for STIPEND or PAID */}
         {(formData.internshipType === "STIPEND" ||
           formData.internshipType === "PAID") && (
           <div className="space-y-4">
@@ -961,7 +970,7 @@ const PostAJob = () => {
               </select>
             </div>
 
-            {/* Frequency is always One Time â€” hidden */}
+            {/* Frequency is always One Time - hidden */}
             <input
               type="hidden"
               name="compensationDetails.frequency"
