@@ -16,7 +16,7 @@ function PremiumPage() {
   const [premiumExpiration, setPremiumExpiration] = useState(null);
   const [sdkReady, setSdkReady] = useState(false);
   const [selectedPlanIndex, setSelectedPlanIndex] = useState(null);
-  const [selectedPlanType, setSelectedPlanType] = useState(null);
+  const [selectedPlanType] = useState(null);
   const [isProcessing, setIsProcessing] = useState(false);
   // FIX 2: Separate loading state for initial data fetch
   const [isFetching, setIsFetching] = useState(true);

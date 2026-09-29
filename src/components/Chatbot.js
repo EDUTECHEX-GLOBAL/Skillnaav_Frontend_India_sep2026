@@ -22,7 +22,6 @@ export default function Chatbot() {
   const videoRef = useRef(null);
   const sessionRef = useRef(null);
   const recognitionRef = useRef(null);
-  const dropdownRef = useRef(null);
   const messagesEndRef = useRef(null);
 
   // Auto-scroll transcript when new messages arrive
