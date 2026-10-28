@@ -1,5 +1,5 @@
-// File: UserAgeGateConsent.js
 import React, { useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import axios from "../../../../../api/axiosInstance";
 
 const UNDER18_CONSENT_POINTS = [
@@ -44,6 +44,7 @@ const UserAgeGateConsent = ({ open, onComplete, saving = false, mode = "DEFAULT"
   const streamRef = useRef(null);
 
   const [cameraError, setCameraError] = useState("");
+  const [isCameraReady, setIsCameraReady] = useState(false);
   const [capturedPreview, setCapturedPreview] = useState("");
   const [capturedFile, setCapturedFile] = useState(null);
 
@@ -72,6 +73,7 @@ const UserAgeGateConsent = ({ open, onComplete, saving = false, mode = "DEFAULT"
       stream.getTracks().forEach((t) => t.stop());
       streamRef.current = null;
     }
+    setIsCameraReady(false);
   };
 
   const startCamera = async () => {
@@ -79,8 +81,12 @@ const UserAgeGateConsent = ({ open, onComplete, saving = false, mode = "DEFAULT"
     try {
       if (!navigator.mediaDevices?.getUserMedia) {
         setCameraError("Camera is not supported in this browser.");
+        setIsCameraReady(false);
         return;
       }
+      // Stop existing stream if any before requesting new one
+      stopCamera();
+
       const stream = await navigator.mediaDevices.getUserMedia({
         video: { facingMode: "user" },
         audio: false,
@@ -88,13 +94,34 @@ const UserAgeGateConsent = ({ open, onComplete, saving = false, mode = "DEFAULT"
       streamRef.current = stream;
       if (videoRef.current) {
         videoRef.current.srcObject = stream;
-        await videoRef.current.play();
+        videoRef.current.onloadedmetadata = () => {
+          setCameraError("");
+          setIsCameraReady(true);
+          videoRef.current?.play().catch((e) => {
+            if (e.name !== "AbortError") {
+              console.warn("Video play error:", e);
+            }
+          });
+        };
+        videoRef.current.onplay = () => {
+          setCameraError("");
+          setIsCameraReady(true);
+        };
+        videoRef.current.onplaying = () => {
+          setCameraError("");
+          setIsCameraReady(true);
+        };
       }
     } catch (err) {
+      if (err.name === "AbortError" || err.message?.includes("interrupted")) {
+        // Harmless: play() request was interrupted by re-render or new load
+        return;
+      }
       console.error("Camera start error:", err);
       setCameraError(
         "Unable to access camera. Please allow camera permission and try again. (Camera works only on HTTPS or localhost.)"
       );
+      setIsCameraReady(false);
     }
   };
 
@@ -107,17 +134,32 @@ const UserAgeGateConsent = ({ open, onComplete, saving = false, mode = "DEFAULT"
       setError("Camera not ready. Please try again.");
       return;
     }
-    const w = video.videoWidth;
-    const h = video.videoHeight;
-    if (!w || !h) {
+    const rawW = video.videoWidth;
+    const rawH = video.videoHeight;
+    if (!rawW || !rawH) {
       setError("Camera not ready. Please wait a moment and try again.");
       return;
     }
+
+    // Scale down image to a max dimension of 800px for fast, reliable upload under 500KB
+    const MAX_DIM = 800;
+    let w = rawW;
+    let h = rawH;
+    if (w > MAX_DIM || h > MAX_DIM) {
+      if (w > h) {
+        h = Math.round((h * MAX_DIM) / w);
+        w = MAX_DIM;
+      } else {
+        w = Math.round((w * MAX_DIM) / h);
+        h = MAX_DIM;
+      }
+    }
+
     canvas.width = w;
     canvas.height = h;
     const ctx = canvas.getContext("2d");
     ctx.drawImage(video, 0, 0, w, h);
-    const dataUrl = canvas.toDataURL("image/jpeg", 0.92);
+    const dataUrl = canvas.toDataURL("image/jpeg", 0.85);
     setCapturedPreview(dataUrl);
     canvas.toBlob(
       (blob) => {
@@ -132,7 +174,7 @@ const UserAgeGateConsent = ({ open, onComplete, saving = false, mode = "DEFAULT"
         stopCamera();
       },
       "image/jpeg",
-      0.92
+      0.85
     );
   };
 
@@ -268,7 +310,12 @@ const UserAgeGateConsent = ({ open, onComplete, saving = false, mode = "DEFAULT"
           guardianEmail: guardianEmail.trim(),
           guardianRelationship,
         };
-        onComplete?.(payload);
+        try {
+          await onComplete?.(payload);
+        } catch (saveErr) {
+          const msg = saveErr?.response?.data?.message || saveErr?.message || "Failed to save consent. Please try again.";
+          setError(msg);
+        }
       } else {
         setGuardianOtpError("Invalid OTP. Please try again.");
       }
@@ -279,7 +326,7 @@ const UserAgeGateConsent = ({ open, onComplete, saving = false, mode = "DEFAULT"
     }
   };
 
-  const handleOver18Continue = () => {
+  const handleOver18Continue = async () => {
     resetError();
     if (!capturedFile) {
       return setError("Please capture a photo to continue.");
@@ -289,15 +336,20 @@ const UserAgeGateConsent = ({ open, onComplete, saving = false, mode = "DEFAULT"
       ageGateCompleted: true,
       ageVerificationPhoto: capturedFile,
     };
-    onComplete?.(payload);
+    try {
+      await onComplete?.(payload);
+    } catch (err) {
+      const msg = err?.response?.data?.message || err?.message || "Failed to save verification. Please try again.";
+      setError(msg);
+    }
   };
 
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50">
-      <div className="w-full max-w-lg bg-white rounded-xl shadow-xl flex flex-col max-h-[calc(100vh-2rem)] overflow-hidden">
-        <div className="p-6 pb-4">
-          <div className="mb-4">
-            <h2 className="text-xl font-bold text-gray-800">
+  const modalContent = (
+    <div className="fixed inset-0 z-[9999] flex items-center justify-center p-3 sm:p-4 bg-black/60 overflow-y-auto overflow-x-hidden backdrop-blur-sm">
+      <div className="w-full max-w-lg bg-white rounded-2xl shadow-2xl flex flex-col max-h-[92vh] sm:max-h-[88vh] overflow-hidden my-auto mx-auto min-w-0 box-border border border-gray-100">
+        <div className="p-4 sm:p-6 pb-3 sm:pb-4 border-b border-gray-100">
+          <div className="mb-2">
+            <h2 className="text-lg sm:text-xl font-bold text-gray-800 break-words">
               {stage === "AGE"
                 ? "Age Confirmation"
                 : stage === "UNDER18"
@@ -308,7 +360,7 @@ const UserAgeGateConsent = ({ open, onComplete, saving = false, mode = "DEFAULT"
                       ? "Verify Guardian Email"
                       : "Age Verification Selfie"}
             </h2>
-            <p className="text-sm text-gray-600 mt-1">
+            <p className="text-xs sm:text-sm text-gray-600 mt-1">
               {stage === "AGE"
                 ? "Please confirm your age group to continue."
                 : stage === "UNDER18"
@@ -321,13 +373,13 @@ const UserAgeGateConsent = ({ open, onComplete, saving = false, mode = "DEFAULT"
             </p>
           </div>
           {error && (
-            <div className="p-3 rounded-md bg-red-100 text-red-700 text-sm border border-red-200">
+            <div className="p-3 rounded-lg bg-red-100 text-red-700 text-xs sm:text-sm border border-red-200">
               {error}
             </div>
           )}
         </div>
 
-        <div className="flex-1 overflow-y-auto px-6 pb-6">
+        <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-4 min-w-0">
 
           {/* AGE SELECTION */}
           {!isReverify && stage === "AGE" && (
@@ -394,35 +446,35 @@ const UserAgeGateConsent = ({ open, onComplete, saving = false, mode = "DEFAULT"
                   <option value="Other">Other</option>
                 </select>
               </div>
-              <div className="rounded-md border border-purple-200 bg-purple-50 p-3">
-                <p className="text-sm font-semibold text-purple-900">What you're consenting to</p>
-                <ul className="mt-2 list-disc pl-5 text-sm text-purple-900 space-y-1">
+              <div className="rounded-xl border border-purple-200 bg-purple-50 p-3 sm:p-4">
+                <p className="text-xs sm:text-sm font-semibold text-purple-900">What you're consenting to</p>
+                <ul className="mt-2 list-disc pl-4 text-xs sm:text-sm text-purple-900 space-y-1.5 leading-relaxed break-words">
                   {UNDER18_CONSENT_POINTS.map((point, idx) => (
                     <li key={idx}>{point}</li>
                   ))}
                 </ul>
               </div>
-              <div className="space-y-2 bg-gray-50 p-3 rounded-md border">
-                <label className="flex items-start gap-2 text-sm text-gray-700">
+              <div className="space-y-2.5 bg-gray-50 p-3 sm:p-4 rounded-xl border text-xs sm:text-sm">
+                <label className="flex items-start gap-2.5 text-gray-700 cursor-pointer">
                   <input
                     type="checkbox"
                     checked={agreeGuardian}
                     onChange={(e) => setAgreeGuardian(e.target.checked)}
-                    className="mt-1 h-4 w-4"
+                    className="mt-0.5 h-4 w-4 shrink-0 rounded text-purple-600 focus:ring-purple-500"
                   />
-                  <span>
+                  <span className="leading-snug break-words">
                     I have read and agree to Terms of Service and Privacy Policy, including how personal
                     information is collected and used.
                   </span>
                 </label>
-                <label className="flex items-start gap-2 text-sm text-gray-700">
+                <label className="flex items-start gap-2.5 text-gray-700 cursor-pointer">
                   <input
                     type="checkbox"
                     checked={agreeTerms}
                     onChange={(e) => setAgreeTerms(e.target.checked)}
-                    className="mt-1 h-4 w-4"
+                    className="mt-0.5 h-4 w-4 shrink-0 rounded text-purple-600 focus:ring-purple-500"
                   />
-                  <span>I agree to the platform Terms & Privacy Policy.</span>
+                  <span className="leading-snug break-words">I agree to the platform Terms & Privacy Policy.</span>
                 </label>
               </div>
             </div>
@@ -532,14 +584,14 @@ const UserAgeGateConsent = ({ open, onComplete, saving = false, mode = "DEFAULT"
               <p className="text-sm text-gray-700">
                 Please take a clear selfie for age verification.
               </p>
-              {cameraError && (
+              {cameraError && !isCameraReady && (
                 <div className="p-3 rounded-md bg-yellow-100 text-yellow-800 text-sm border border-yellow-200">
                   {cameraError}
                 </div>
               )}
               {!capturedPreview ? (
                 <div className="w-full overflow-hidden rounded-lg border bg-black">
-                  <video ref={videoRef} className="w-full h-auto" playsInline muted />
+                  <video ref={videoRef} className="w-full h-auto" autoPlay playsInline muted />
                 </div>
               ) : (
                 <div className="w-full overflow-hidden rounded-lg border">
@@ -555,13 +607,13 @@ const UserAgeGateConsent = ({ open, onComplete, saving = false, mode = "DEFAULT"
 
         {/* FOOTER: Guardian Consent */}
         {stage === "UNDER18" && (
-          <div className="p-6 pt-4 border-t bg-white">
-            <div className="flex gap-3">
+          <div className="p-4 sm:p-6 pt-3 sm:pt-4 border-t bg-gray-50/80">
+            <div className="flex gap-2.5 sm:gap-3">
               <button
                 type="button"
                 disabled={saving}
                 onClick={() => { resetError(); setStage("AGE"); setAgeCategory(""); }}
-                className="w-full py-3 rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-50 disabled:opacity-60 disabled:cursor-not-allowed"
+                className="w-full py-2.5 sm:py-3 rounded-lg border border-gray-300 text-sm sm:text-base font-semibold text-gray-700 hover:bg-gray-100 disabled:opacity-60 disabled:cursor-not-allowed transition"
               >
                 Back
               </button>
@@ -569,7 +621,7 @@ const UserAgeGateConsent = ({ open, onComplete, saving = false, mode = "DEFAULT"
                 type="button"
                 disabled={saving || !under18FieldsOk || !agreeGuardian || !agreeTerms}
                 onClick={handleUnder18Continue}
-                className="w-full py-3 rounded-lg bg-purple-600 text-white hover:bg-purple-700 disabled:opacity-60 disabled:cursor-not-allowed disabled:bg-gray-400 disabled:hover:bg-gray-400"
+                className="w-full py-2.5 sm:py-3 rounded-lg bg-purple-600 text-sm sm:text-base font-semibold text-white hover:bg-purple-700 disabled:opacity-60 disabled:cursor-not-allowed disabled:bg-gray-400 transition"
               >
                 {saving ? "Saving..." : "Continue"}
               </button>
@@ -579,7 +631,7 @@ const UserAgeGateConsent = ({ open, onComplete, saving = false, mode = "DEFAULT"
 
         {/* FOOTER: User OTP */}
         {stage === "UNDER18_USER_OTP" && (
-          <div className="p-6 pt-4 border-t bg-white">
+          <div className="p-4 sm:p-6 pt-3 sm:pt-4 border-t bg-gray-50/80">
             <button
               type="button"
               disabled={verifyingUserOtp || sendingUserOtp}
@@ -590,7 +642,7 @@ const UserAgeGateConsent = ({ open, onComplete, saving = false, mode = "DEFAULT"
                 setUserOtpError("");
                 setStage("UNDER18");
               }}
-              className="w-full py-3 rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-50 disabled:opacity-60 disabled:cursor-not-allowed"
+              className="w-full py-2.5 sm:py-3 rounded-lg border border-gray-300 text-sm sm:text-base font-semibold text-gray-700 hover:bg-gray-100 disabled:opacity-60 disabled:cursor-not-allowed transition"
             >
               Back
             </button>
@@ -599,7 +651,7 @@ const UserAgeGateConsent = ({ open, onComplete, saving = false, mode = "DEFAULT"
 
         {/* FOOTER: Guardian OTP */}
         {stage === "UNDER18_GUARDIAN_OTP" && (
-          <div className="p-6 pt-4 border-t bg-white">
+          <div className="p-4 sm:p-6 pt-3 sm:pt-4 border-t bg-gray-50/80">
             <button
               type="button"
               disabled={verifyingGuardianOtp || sendingGuardianOtp}
@@ -613,7 +665,7 @@ const UserAgeGateConsent = ({ open, onComplete, saving = false, mode = "DEFAULT"
                 // 2705 FIX: Go back to guardian form, not user OTP (user OTP step is skipped)
                 setStage("UNDER18");
               }}
-              className="w-full py-3 rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-50 disabled:opacity-60 disabled:cursor-not-allowed"
+              className="w-full py-2.5 sm:py-3 rounded-lg border border-gray-300 text-sm sm:text-base font-semibold text-gray-700 hover:bg-gray-100 disabled:opacity-60 disabled:cursor-not-allowed transition"
             >
               Back
             </button>
@@ -622,14 +674,14 @@ const UserAgeGateConsent = ({ open, onComplete, saving = false, mode = "DEFAULT"
 
         {/* FOOTER: Over 18 Camera */}
         {stage === "OVER18_CAMERA" && (
-          <div className="p-6 pt-4 border-t bg-white">
-            <div className="flex gap-3">
+          <div className="p-4 sm:p-6 pt-3 sm:pt-4 border-t bg-gray-50/80">
+            <div className="flex gap-2.5 sm:gap-3">
               {isReverify ? (
                 <button
                   type="button"
                   disabled={saving}
                   onClick={() => onClose?.()}
-                  className="w-full py-3 rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-50 disabled:opacity-60 disabled:cursor-not-allowed"
+                  className="w-full py-2.5 sm:py-3 rounded-lg border border-gray-300 text-sm sm:text-base font-semibold text-gray-700 hover:bg-gray-100 disabled:opacity-60 disabled:cursor-not-allowed transition"
                 >
                   Close
                 </button>
@@ -645,7 +697,7 @@ const UserAgeGateConsent = ({ open, onComplete, saving = false, mode = "DEFAULT"
                     setStage("AGE");
                     setAgeCategory("");
                   }}
-                  className="w-full py-3 rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-50 disabled:opacity-60 disabled:cursor-not-allowed"
+                  className="w-full py-2.5 sm:py-3 rounded-lg border border-gray-300 text-sm sm:text-base font-semibold text-gray-700 hover:bg-gray-100 disabled:opacity-60 disabled:cursor-not-allowed transition"
                 >
                   Back
                 </button>
@@ -653,9 +705,9 @@ const UserAgeGateConsent = ({ open, onComplete, saving = false, mode = "DEFAULT"
               {!capturedPreview ? (
                 <button
                   type="button"
-                  disabled={saving || !!cameraError}
+                  disabled={saving || !isCameraReady}
                   onClick={capturePhoto}
-                  className="w-full py-3 rounded-lg bg-purple-600 text-white hover:bg-purple-700 disabled:opacity-60 disabled:cursor-not-allowed disabled:bg-gray-400"
+                  className="w-full py-2.5 sm:py-3 rounded-lg bg-purple-600 text-white hover:bg-purple-700 disabled:opacity-60 disabled:cursor-not-allowed disabled:bg-gray-400 font-semibold text-sm sm:text-base transition"
                 >
                   Capture
                 </button>
@@ -665,7 +717,7 @@ const UserAgeGateConsent = ({ open, onComplete, saving = false, mode = "DEFAULT"
                     type="button"
                     disabled={saving}
                     onClick={retakePhoto}
-                    className="w-full py-3 rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-50 disabled:opacity-60 disabled:cursor-not-allowed"
+                    className="w-full py-2.5 sm:py-3 rounded-lg border border-gray-300 text-sm sm:text-base font-semibold text-gray-700 hover:bg-gray-100 disabled:opacity-60 disabled:cursor-not-allowed transition"
                   >
                     Retake
                   </button>
@@ -673,7 +725,7 @@ const UserAgeGateConsent = ({ open, onComplete, saving = false, mode = "DEFAULT"
                     type="button"
                     disabled={saving || !capturedFile}
                     onClick={handleOver18Continue}
-                    className="w-full py-3 rounded-lg bg-purple-600 text-white hover:bg-purple-700 disabled:opacity-60 disabled:cursor-not-allowed disabled:bg-gray-400"
+                    className="w-full py-2.5 sm:py-3 rounded-lg bg-purple-600 text-white hover:bg-purple-700 disabled:opacity-60 disabled:cursor-not-allowed disabled:bg-gray-400 font-semibold text-sm sm:text-base transition"
                   >
                     {saving ? "Saving..." : "Continue"}
                   </button>
@@ -686,6 +738,11 @@ const UserAgeGateConsent = ({ open, onComplete, saving = false, mode = "DEFAULT"
       </div>
     </div>
   );
+
+  if (typeof document !== "undefined") {
+    return createPortal(modalContent, document.body);
+  }
+  return modalContent;
 };
 
 export default UserAgeGateConsent;

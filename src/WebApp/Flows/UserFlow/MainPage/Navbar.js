@@ -1,4 +1,3 @@
-// Navbar.jsx (updated & cleaned)
 import React, { useEffect, useRef, useState } from "react";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faUser, faSignOutAlt, faBell, faBars, faCrown } from "@fortawesome/free-solid-svg-icons";
@@ -9,7 +8,7 @@ import axios from "../../../../api/axiosInstance";
 import { useFeedback } from "../../../../context/FeedbackContext";
 import { userFlowQuestions } from "../../../../components/FeedbackModal/questionSets";
 
-const Navbar = ({ onToggleSidebar }) => {
+const Navbar = ({ onToggleSidebar, isSidebarOpen, onCloseSidebar }) => {
   const { handleSelectTab, selectedTab } = useTabContext();
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   const dropdownRef = useRef(null);
@@ -83,15 +82,45 @@ const Navbar = ({ onToggleSidebar }) => {
     fetchNotifications();
   }, [userId]);
 
-  const handleUserClick = () => setIsDropdownOpen((prev) => !prev);
+  const handleUserClick = (e) => {
+    e?.stopPropagation();
+    if (onCloseSidebar) onCloseSidebar();
+    setIsDropdownOpen((prev) => !prev);
+  };
+
+  const handleHamburgerClick = () => {
+    setIsDropdownOpen(false);
+    if (onToggleSidebar) onToggleSidebar();
+  };
+
+  const handleNotificationClick = () => {
+    setIsDropdownOpen(false);
+    if (onCloseSidebar) onCloseSidebar();
+    handleSelectTab("notifications");
+  };
 
   const performLogout = () => {
     localStorage.removeItem("userToken");
     localStorage.removeItem("studentInfo");
     localStorage.removeItem("userInfo");
     localStorage.removeItem("sessionId");
+    localStorage.removeItem("schoolAdminId");
     sessionStorage.clear();
-    navigate("/user/login");
+
+    const currentHost = window.location.hostname;
+    const port = window.location.port ? `:${window.location.port}` : "";
+    const protocol = window.location.protocol;
+
+    if (currentHost.startsWith("b2b.localhost")) {
+      window.location.href = `${protocol}//localhost${port}/user`;
+      return;
+    } else if (currentHost.startsWith("b2b.") || currentHost.startsWith("campus.")) {
+      const mainHost = currentHost.replace(/^(b2b|campus)\./, "");
+      window.location.href = `${protocol}//${mainHost}${port}/user`;
+      return;
+    }
+
+    navigate("/user");
   };
 
   const handleLogoutTrigger = async () => {
@@ -141,6 +170,18 @@ const Navbar = ({ onToggleSidebar }) => {
     });
   };
 
+  // Close dropdown when mobile sidebar opens
+  useEffect(() => {
+    if (isSidebarOpen) {
+      setIsDropdownOpen(false);
+    }
+  }, [isSidebarOpen]);
+
+  // Close dropdown on tab navigation
+  useEffect(() => {
+    setIsDropdownOpen(false);
+  }, [selectedTab]);
+
   useEffect(() => {
     const handleClickOutside = (event) => {
       if (dropdownRef.current && !dropdownRef.current.contains(event.target)) {
@@ -148,7 +189,11 @@ const Navbar = ({ onToggleSidebar }) => {
       }
     };
     document.addEventListener("mousedown", handleClickOutside);
-    return () => document.removeEventListener("mousedown", handleClickOutside);
+    document.addEventListener("touchstart", handleClickOutside);
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+      document.removeEventListener("touchstart", handleClickOutside);
+    };
   }, []);
 
   const planStyles = {
@@ -160,25 +205,33 @@ const Navbar = ({ onToggleSidebar }) => {
   if (selectedTab === "assessment") return null;
 
   return (
-    <div className="bg-white font-poppins border-b border-gray-200 sticky top-0 z-50 w-full">
-      <div className="flex items-center justify-between px-4 sm:px-6 py-4">
-        <div className="flex items-center space-x-4">
-          <button onClick={onToggleSidebar} className="text-gray-700 md:hidden">
-            <FontAwesomeIcon icon={faBars} className="text-xl" />
+    <>
+    <header className="bg-white font-poppins text-gray-800 h-[72px] px-3 sm:px-6 border-b border-gray-300 sticky top-0 z-50 flex justify-between items-center gap-2 w-full box-border flex-shrink-0">
+      <div className="flex items-center gap-2 sm:gap-3 pl-0 sm:pl-2 min-w-0 flex-shrink">
+          <button
+            onClick={handleHamburgerClick}
+            className="md:hidden w-10 h-10 rounded-full border border-gray-200 bg-white text-teal-600 hover:bg-teal-50 transition flex items-center justify-center shadow-sm shrink-0"
+            aria-label="Toggle navigation menu"
+          >
+            <FontAwesomeIcon icon={faBars} className="text-lg" />
           </button>
-          <img src={logo} alt="Edutechex Logo" className="h-10" />
+          <img
+            src={logo}
+            alt="Edutechex Logo"
+            className="h-[42px] sm:h-[46px] w-auto max-w-[160px] sm:max-w-[190px] object-contain ml-0.5 sm:ml-2"
+          />
         </div>
 
-        <div className="relative flex items-center space-x-5">
+        <div className="relative flex items-center gap-2 sm:gap-4 shrink-0">
 
           {/* 1st — Bell */}
           <div className="relative">
             <button
-              onClick={() => handleSelectTab("notifications")}
-              className="relative focus:outline-none w-10 h-10 flex items-center justify-center rounded-full bg-gray-100 hover:bg-gray-200 border border-gray-200 transition"
+              onClick={handleNotificationClick}
+              className="relative focus:outline-none w-10 h-10 flex items-center justify-center rounded-full bg-gray-100 hover:bg-gray-200 transition shrink-0"
               aria-label="Open notifications"
             >
-              <FontAwesomeIcon icon={faBell} className="w-4 h-4 text-gray-600" />
+              <FontAwesomeIcon icon={faBell} className="text-gray-700 text-lg" />
               {unreadCount > 0 && (
                 <span className="absolute -top-1 -right-1 min-w-[20px] h-5 px-1 rounded-full bg-red-600 text-white text-[11px] font-bold flex items-center justify-center border-2 border-white">
                   {unreadCount > 99 ? "99+" : unreadCount}
@@ -202,17 +255,19 @@ const Navbar = ({ onToggleSidebar }) => {
               <img
                 src={getProfileImageUrl(userInfo.profileImage)}
                 alt="Profile"
-                className="w-9 h-9 rounded-full object-cover cursor-pointer shadow-md border-2 border-purple-300 hover:scale-105"
+                className="w-10 h-10 rounded-full object-cover cursor-pointer shadow-sm border border-gray-200 hover:scale-105"
               />
             ) : (
-              <FontAwesomeIcon icon={faUser} className="w-8 h-8 text-gray-800 cursor-pointer" />
+              <button className="w-10 h-10 rounded-full bg-gray-100 hover:bg-gray-200 transition flex items-center justify-center cursor-pointer">
+                <FontAwesomeIcon icon={faUser} className="text-gray-700 text-lg" />
+              </button>
             )}
           </div>
 
           {isDropdownOpen && (
             <div
               ref={dropdownRef}
-              className="absolute right-0 top-16 mt-2 bg-white shadow-xl rounded-xl border border-gray-200 z-50 w-auto min-w-[20rem]"
+              className="absolute right-0 top-full mt-2 bg-white shadow-xl rounded-xl border border-gray-200 z-50 w-[calc(100vw-2rem)] sm:w-auto sm:min-w-[20rem] max-w-sm"
             >
               <div className="px-4 py-3 border-b rounded-t-xl">
                 <div className="flex items-center gap-2 text-black">
@@ -239,7 +294,7 @@ const Navbar = ({ onToggleSidebar }) => {
           )}
 
         </div>
-      </div>
+      </header>
 
       {showLogoutModal && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black bg-opacity-50">
@@ -267,7 +322,7 @@ const Navbar = ({ onToggleSidebar }) => {
           </div>
         </div>
       )}
-    </div>
+    </>
   );
 };
 

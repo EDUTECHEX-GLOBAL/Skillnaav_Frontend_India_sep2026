@@ -1,5 +1,5 @@
-import React, { lazy, Suspense } from "react";
-import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
+import React, { lazy, Suspense, useEffect } from "react";
+import { BrowserRouter, Routes, Route, Navigate, useLocation } from "react-router-dom";
 import "@fontsource/inter/400.css";
 import "@fontsource/inter/600.css";
 import "@fontsource/inter/700.css";
@@ -8,29 +8,60 @@ import FeedbackModal from "./components/FeedbackModal/FeedbackModal";
 import FeedbackProvider from "./context/FeedbackContext";
 import GlobalEdutechexFavicon from "./components/GlobalEdutechexFavicon";
 import EdutechexTabBrandingLayout from "./components/EdutechexTabBrandingLayout";
+import ScrollToTop from "./components/ScrollToTop";
+import axios from "./api/axiosInstance";
+
+// Dedicated visitor tracker for all public route views
+const VisitorTracker = () => {
+  const location = useLocation();
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const path = location.pathname || "/";
+    if (path.startsWith("/admin")) return;
+
+    const track = async () => {
+      try {
+        const key = `edutechex_track_${path}`;
+        const last = sessionStorage.getItem(key);
+        const now = Date.now();
+        if (!last || now - Number(last) > 20 * 1000) {
+          sessionStorage.setItem(key, String(now));
+          await axios.post("/api/contact/track-visitor", {
+            page: path,
+          });
+        }
+      } catch (err) {
+        // silent
+      }
+    };
+    track();
+  }, [location.pathname]);
+
+  return null;
+};
 
 // ---------- LAZY IMPORTS ----------
 const Home = lazy(() => import("./pages/Home/Home"));
 const Admin = lazy(() => import("./pages/Admin"));
 const Login = lazy(() => import("./pages/Admin/Login"));
-
 const PricingPage = lazy(() => import("./pages/PricingPage"));
 const FeaturesPage = lazy(() => import("./pages/FeaturesPage"));
 const TeamPage = lazy(() => import("./pages/TeamPage"));
 const FaqPage = lazy(() => import("./pages/FaqPage"));
 const ContactPage = lazy(() => import("./pages/ContactPage"));
 const VisionPage = lazy(() => import("./pages/VisionPage"));
+const VisaPage = lazy(() => import("./pages/VisaPage"));
+const PrivacyPage = lazy(() => import("./pages/PrivacyPage"));
+const TermsPage = lazy(() => import("./pages/TermsPage"));
 const VerifyCertificate = lazy(() => import("./WebApp/MainPage/VerifyCertificate"));
-
 const UserCreateAccount = lazy(() => import("./WebApp/Flows/UserFlow/SignUpLogin/UserCreateAccount"));
 const UserLogin = lazy(() => import("./WebApp/Flows/UserFlow/SignUpLogin/UserLogin"));
 const UserFlow = lazy(() => import("./WebApp/Flows/UserFlow/UserFlow"));
 const UserMainPage = lazy(() => import("./WebApp/Flows/UserFlow/MainPage/UserMainPage"));
 const UserSupportPage = lazy(() => import("./WebApp/Flows/UserFlow/MainPage/support/UserSupportPage"));
 const UserforgotPassword = lazy(() => import("./WebApp/Flows/UserFlow/SignUpLogin/UserforgotPassword"));
-
 const EdutechexAnalysis = lazy(() => import("./WebApp/Flows/UserFlow/MainPage/EdutechexAnalysis"));
-
 const PartnerFlow = lazy(() => import("./WebApp/Flows/PartnerFlow/PartnerFlow"));
 const PartnerCreateAccount = lazy(() => import("./WebApp/Flows/PartnerFlow/SignUpLogin/PartnerCreateAccount"));
 const PartnerLogin = lazy(() => import("./WebApp/Flows/PartnerFlow/SignUpLogin/PartnerLogin"));
@@ -38,7 +69,6 @@ const PartnerProfilePicture = lazy(() => import("./WebApp/Flows/PartnerFlow/Sign
 const PartnerMainPage = lazy(() => import("./WebApp/Flows/PartnerFlow/MainPage/PartnerMainPage"));
 const PartnerSupportPage = lazy(() => import("./WebApp/Flows/PartnerFlow/MainPage/PartnerSupportPage"));
 const PartnerforgotPassword = lazy(() => import("./WebApp/Flows/PartnerFlow/SignUpLogin/PartnerforgotPassword"));
-
 const AdminCreateAccount = lazy(() => import("./WebApp/Flows/AdminFlow/SignUpLogin/AdminCreateAccount"));
 const AdminLogin = lazy(() => import("./WebApp/Flows/AdminFlow/SignUpLogin/AdminLogin"));
 const AdminLoginOtp = lazy(() => import("./WebApp/Flows/AdminFlow/SignUpLogin/AdminLoginOtp"));
@@ -47,75 +77,119 @@ const AdminResetPassword = lazy(() => import("./WebApp/Flows/AdminFlow/SignUpLog
 const AdminProfileForm = lazy(() => import("./WebApp/Flows/AdminFlow/SignUpLogin/AdminProfileBuilding/AdminProfileForm"));
 const AdminProfilePicture = lazy(() => import("./WebApp/Flows/AdminFlow/SignUpLogin/AdminProfileBuilding/AdminProfilePicture"));
 const AdminMainPage = lazy(() => import("./WebApp/Flows/AdminFlow/MainPage/AdminMainPage"));
-
 const TryforFree = lazy(() => import("./WebApp/TryforFree"));
-
 const SchoolAdminFlow = lazy(() => import("./WebApp/Flows/SchoolAdminFlow/SchoolAdminFlow"));
 const SchoolAdminResetPassword = lazy(() => import("./WebApp/Flows/SchoolAdminFlow/SignUpLogin/SchoolAdminResetPassword"));
 const SchoolAdminForgotPassword = lazy(() => import("./WebApp/Flows/SchoolAdminFlow/SignUpLogin/SchoolAdminForgotPassword"));
 const SchoolAdminSupportPage = lazy(() => import("./WebApp/Flows/SchoolAdminFlow/MainPage/pages/SchoolAdminSupportPage"));
 
+const isB2BHost = () => {
+  if (typeof window === "undefined") return false;
+  const hostname = window.location.hostname.toLowerCase();
+  return (
+    hostname.startsWith("b2b.") ||
+    hostname.startsWith("campus.") ||
+    hostname.startsWith("institution.") ||
+    hostname.startsWith("student-b2b.")
+  );
+};
+
 function App() {
+  const isB2B = isB2BHost();
+
   return (
     <FeedbackProvider>
      <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
+        <VisitorTracker />
+        <ScrollToTop />
         <GlobalEdutechexFavicon />
         <Suspense fallback={<PageLoader />}>
           <Routes>
-            {/* Website */}
-            <Route path="/" element={<Home />} />
-            <Route path="/features" element={<FeaturesPage />} />
-            <Route path="/team" element={<TeamPage />} />
-            <Route path="/pricing" element={<PricingPage />} />
-            <Route path="/faqs" element={<FaqPage />} />
-            <Route path="/contact" element={<ContactPage />} />
-            <Route path="/vision" element={<VisionPage />} />
-            <Route path="/verify/:certificateId" element={<VerifyCertificate />} />
+            {isB2B ? (
+              /* 🏫 Dedicated B2B / Campus Subdomain Routes (Direct login to homepage) */
+              <>
+                <Route path="/" element={<UserLogin />} />
+                <Route path="/login" element={<UserLogin />} />
+                <Route path="/user/login" element={<UserLogin />} />
+                <Route path="/user" element={<UserLogin />} />
+                <Route path="/user-create-account" element={<UserCreateAccount />} />
 
-            {/* User */}
-            <Route path="/user" element={<UserFlow />} />
-            <Route path="/user-create-account" element={<UserCreateAccount />} />
-            <Route path="/user/login" element={<UserLogin />} />
+                <Route path="/user-main-page/*" element={<UserMainPage />} />
+                <Route path="/user-support" element={<UserSupportPage />} />
+                <Route path="/user-forgot-password" element={<UserforgotPassword />} />
+                <Route path="/edutechex-analysis" element={<EdutechexAnalysis />} />
+                <Route path="/verify/:certificateId" element={<VerifyCertificate />} />
 
-            <Route path="/user-main-page/*" element={<UserMainPage />} />
-            <Route path="/user-support" element={<UserSupportPage />} />
-            <Route path="/user-forgot-password" element={<UserforgotPassword />} />
-           
+                <Route path="*" element={<Navigate to="/" replace />} />
+              </>
+            ) : (
+              /* 🌐 Main Domain Routes (e.g., localhost:3000 or edutechex.com) */
+              <>
+                {/* Website */}
+                <Route path="/" element={<Home />} />
+                <Route path="/features" element={<FeaturesPage />} />
+                <Route path="/team" element={<Navigate to="/" replace />} />
+                <Route path="/pricing" element={<PricingPage />} />
+                <Route path="/faqs" element={<FaqPage />} />
+                <Route path="/immigration-faq" element={<FaqPage />} />
+                <Route path="/contact" element={<ContactPage />} />
+                <Route path="/vision" element={<VisionPage />} />
+                <Route path="/about" element={<VisionPage />} />
+                <Route path="/about-edutechex" element={<VisionPage />} />
+                <Route path="/about-skillnaav" element={<VisionPage />} />
+                <Route path="/visa" element={<VisaPage />} />
+                <Route path="/privacy" element={<PrivacyPage />} />
+                <Route path="/terms" element={<TermsPage />} />
+                <Route path="/verify/:certificateId" element={<VerifyCertificate />} />
 
-            <Route path="/edutechex-analysis" element={<EdutechexAnalysis />} />
+                {/* User */}
+                <Route path="/user" element={<UserFlow />} />
+                <Route path="/user-create-account" element={<UserCreateAccount />} />
+                <Route path="/user/login" element={<UserLogin />} />
+                <Route path="/b2b/login" element={<Navigate to="/user/login" replace />} />
+                <Route path="/b2b-student/login" element={<Navigate to="/user/login" replace />} />
+                <Route path="/b2b" element={<Navigate to="/user/login" replace />} />
 
-            {/* Partner */}
-            <Route path="/partner" element={<PartnerFlow />} />
-            <Route path="/partner-create-account" element={<PartnerCreateAccount />} />
-            <Route path="/partner/login" element={<PartnerLogin />} />
-            <Route path="/partner-profile-picture" element={<PartnerProfilePicture />} />
-            <Route path="/partner-main-page/*" element={<PartnerMainPage />} />
-            <Route path="/partner-support" element={<PartnerSupportPage />} />
-            <Route path="/partner-forgot-password" element={<PartnerforgotPassword />} />
+                <Route path="/user-main-page/*" element={<UserMainPage />} />
+                <Route path="/user-support" element={<UserSupportPage />} />
+                <Route path="/user-forgot-password" element={<UserforgotPassword />} />
 
-            <Route element={<EdutechexTabBrandingLayout />}>
-              {/* Admin */}
-              <Route path="/admin" element={<Admin />} />
-              <Route path="/admin-login" element={<Login />} />
-              <Route path="/admin-create-account" element={<AdminCreateAccount />} />
-              <Route path="/admin/login" element={<AdminLogin />} />
-              <Route path="/admin/login-otp" element={<AdminLoginOtp />} />
-              <Route path="/admin/forgot-password" element={<AdminForgotPassword />} />
-              <Route path="/admin/reset-password" element={<AdminResetPassword />} />
-              <Route path="/admin-profile-form" element={<AdminProfileForm />} />
-              <Route path="/admin-profile-picture" element={<AdminProfilePicture />} />
-              <Route path="/admin-main-page/*" element={<AdminMainPage />} />
+                <Route path="/edutechex-analysis" element={<EdutechexAnalysis />} />
 
-              {/* School */}
-              <Route path="/schooladmin/*" element={<SchoolAdminFlow />} />
-              <Route path="/schooladmin-support" element={<SchoolAdminSupportPage />} />
-              <Route path="/schooladmin/reset-password/:token" element={<SchoolAdminResetPassword />} />
-              <Route path="/schooladmin/forgot-password" element={<SchoolAdminForgotPassword />} />
-            </Route>
+                {/* Partner */}
+                <Route path="/partner" element={<PartnerFlow />} />
+                <Route path="/partner-create-account" element={<PartnerCreateAccount />} />
+                <Route path="/partner/login" element={<PartnerLogin />} />
+                <Route path="/partner-profile-picture" element={<PartnerProfilePicture />} />
+                <Route path="/partner-main-page/*" element={<PartnerMainPage />} />
+                <Route path="/partner-support" element={<PartnerSupportPage />} />
+                <Route path="/partner-forgot-password" element={<PartnerforgotPassword />} />
 
-            <Route path="/choose-role" element={<TryforFree />} />
+                <Route element={<EdutechexTabBrandingLayout />}>
+                  {/* Admin */}
+                  <Route path="/admin" element={<Admin />} />
+                  <Route path="/admin-login" element={<Login />} />
+                  <Route path="/admin-create-account" element={<AdminCreateAccount />} />
+                  <Route path="/admin/login" element={<AdminLogin />} />
+                  <Route path="/admin/login-otp" element={<AdminLoginOtp />} />
+                  <Route path="/admin/forgot-password" element={<AdminForgotPassword />} />
+                  <Route path="/admin/reset-password" element={<AdminResetPassword />} />
+                  <Route path="/admin-profile-form" element={<AdminProfileForm />} />
+                  <Route path="/admin-profile-picture" element={<AdminProfilePicture />} />
+                  <Route path="/admin-main-page/*" element={<AdminMainPage />} />
 
-            <Route path="*" element={<Navigate to="/" replace />} />
+                  {/* School */}
+                  <Route path="/schooladmin/*" element={<SchoolAdminFlow />} />
+                  <Route path="/schooladmin-support" element={<SchoolAdminSupportPage />} />
+                  <Route path="/schooladmin/reset-password/:token" element={<SchoolAdminResetPassword />} />
+                  <Route path="/schooladmin/forgot-password" element={<SchoolAdminForgotPassword />} />
+                </Route>
+
+                <Route path="/choose-role" element={<TryforFree />} />
+
+                <Route path="*" element={<Navigate to="/" replace />} />
+              </>
+            )}
           </Routes>
         </Suspense>
 

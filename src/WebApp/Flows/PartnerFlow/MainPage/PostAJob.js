@@ -5,6 +5,15 @@ import axios from "../../../../api/axiosInstance";
 import edutechex_logo_white from "../../../../assets/edutechex_logo_white (1).png";
 import { useTabContext } from "./UserHomePageContext/HomePageContext";
 import { IN_STATES } from "../../../../constants/locations";
+import {
+  validateJobTitle,
+  validateCompanyName,
+  validateContactName,
+  validateEmail,
+  validateContactPhone,
+} from "../../../../utils/validators";
+import DatePicker from "react-datepicker";
+import "react-datepicker/dist/react-datepicker.css";
 const SuccessModal = ({ onOk }) => (
   <div
     className="fixed inset-0 z-[9999] flex items-center justify-center"
@@ -81,6 +90,122 @@ const SuccessModal = ({ onOk }) => (
   </div>
 );
 
+// CustomSelect ensures the dropdown menu ("down box") matches the exact width of the trigger ("top box")
+const CustomSelect = ({
+  name,
+  value,
+  onChange,
+  options,
+  placeholder = "Select an option",
+  required = false,
+  error = "",
+  className = "",
+  disabled = false,
+}) => {
+  const [isOpen, setIsOpen] = useState(false);
+  const containerRef = useRef(null);
+
+  const selectedOption = options.find(
+    (opt) => String(opt.value) === String(value)
+  );
+
+  useEffect(() => {
+    const handleOutsideClick = (e) => {
+      if (containerRef.current && !containerRef.current.contains(e.target)) {
+        setIsOpen(false);
+      }
+    };
+    if (isOpen) {
+      document.addEventListener("mousedown", handleOutsideClick);
+      document.addEventListener("touchstart", handleOutsideClick);
+    }
+    return () => {
+      document.removeEventListener("mousedown", handleOutsideClick);
+      document.removeEventListener("touchstart", handleOutsideClick);
+    };
+  }, [isOpen]);
+
+  const handleOptionClick = (val) => {
+    onChange({ target: { name, value: val } });
+    setIsOpen(false);
+  };
+
+  return (
+    <div ref={containerRef} className={`relative w-full ${isOpen ? "z-[60]" : "z-[1]"}`}>
+      {/* Top Box (Trigger) */}
+      <button
+        type="button"
+        disabled={disabled}
+        onClick={() => setIsOpen((prev) => !prev)}
+        className={`w-full h-12 box-border p-3 border rounded-lg bg-white text-gray-900 flex justify-between items-center text-left text-sm font-poppins transition-all focus:outline-none focus:ring-2 ${
+          isOpen
+            ? "border-teal-500 ring-2 ring-teal-500"
+            : error
+              ? "border-red-500 focus:ring-red-400"
+              : "border-gray-300 hover:border-gray-400 focus:ring-teal-500"
+        } ${disabled ? "opacity-60 cursor-not-allowed bg-gray-50" : "cursor-pointer"} ${className}`}
+        style={{ marginTop: "0px" }}
+      >
+        <span
+          className={`truncate pr-2 ${
+            selectedOption
+              ? "text-gray-900 font-medium"
+              : "text-gray-400 font-normal"
+          }`}
+        >
+          {selectedOption ? selectedOption.label : placeholder}
+        </span>
+        <svg
+          className={`w-4 h-4 flex-shrink-0 text-gray-400 transition-transform duration-200 ${
+            isOpen ? "rotate-180 text-teal-600" : ""
+          }`}
+          fill="none"
+          stroke="currentColor"
+          viewBox="0 0 24 24"
+        >
+          <path
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            strokeWidth="2"
+            d="M19 9l-7 7-7-7"
+          />
+        </svg>
+      </button>
+
+      {/* Down Box (Dropdown Menu) - strictly w-full left-0 right-0 */}
+      {isOpen && (
+        <div
+          className="absolute z-[70] left-0 right-0 w-full mt-1 bg-white border border-gray-200 rounded-lg shadow-xl max-h-60 overflow-y-auto py-1"
+          style={{ width: "100%", maxWidth: "100%", boxSizing: "border-box" }}
+        >
+          {options.length === 0 ? (
+            <div className="px-4 py-3 text-xs text-gray-400 text-center">
+              No options available
+            </div>
+          ) : (
+            options.map((opt) => {
+              const isSelected = String(value) === String(opt.value);
+              return (
+                <div
+                  key={opt.value}
+                  onClick={() => handleOptionClick(opt.value)}
+                  className={`px-4 py-2.5 text-xs sm:text-sm cursor-pointer transition-colors break-words leading-relaxed ${
+                    isSelected
+                      ? "bg-teal-50 text-teal-700 font-semibold"
+                      : "text-gray-700 hover:bg-teal-50/70 hover:text-teal-700"
+                  }`}
+                >
+                  {opt.label}
+                </div>
+              );
+            })
+          )}
+        </div>
+      )}
+    </div>
+  );
+};
+
 const PostAJob = () => {
   const { saveJob, handleSelectTab } = useTabContext();
 
@@ -145,10 +270,26 @@ const PostAJob = () => {
   const [freemiumAlert, setFreemiumAlert] = useState("");
   const cityDebounceRef = useRef(null);
 
+  const [fieldErrors, setFieldErrors] = useState({
+    jobTitle: "",
+    companyName: "",
+    "contactInfo.name": "",
+    "contactInfo.email": "",
+    "contactInfo.phone": "",
+  });
+  const [touchedFields, setTouchedFields] = useState({
+    jobTitle: false,
+    companyName: false,
+    "contactInfo.name": false,
+    "contactInfo.email": false,
+    "contactInfo.phone": false,
+  });
+
   const stateList = formData.country === "India" ? IN_STATES : [];
   const stateLabel =
     formData.country === "India" ? "State / Union Territory" : "State";
   const [qualInput, setQualInput] = useState("");
+  const [skillError, setSkillError] = useState("");
 
   useEffect(() => {
     try {
@@ -201,6 +342,20 @@ const PostAJob = () => {
 
   const handleChange = (e) => {
     const { name, value } = e.target;
+    if (name === "jobTitle") {
+      setTouchedFields((prev) => ({ ...prev, jobTitle: true }));
+      setFieldErrors((prev) => ({
+        ...prev,
+        jobTitle: validateJobTitle(value),
+      }));
+    } else if (name === "companyName") {
+      setTouchedFields((prev) => ({ ...prev, companyName: true }));
+      setFieldErrors((prev) => ({
+        ...prev,
+        companyName: validateCompanyName(value),
+      }));
+    }
+
     setFormData((prev) => {
       if (name === "internshipType") {
         return {
@@ -223,6 +378,13 @@ const PostAJob = () => {
       }
       if (name.startsWith("contactInfo.")) {
         const field = name.split(".")[1];
+        if (touchedFields[name]) {
+          let err = "";
+          if (field === "name") err = validateContactName(value);
+          else if (field === "email") err = validateEmail(value);
+          else if (field === "phone") err = validateContactPhone(value, prev.country);
+          setFieldErrors((prevErr) => ({ ...prevErr, [name]: err }));
+        }
         return {
           ...prev,
           contactInfo: { ...prev.contactInfo, [field]: value },
@@ -230,6 +392,41 @@ const PostAJob = () => {
       }
       return { ...prev, [name]: value };
     });
+  };
+
+  const handleBlur = (e) => {
+    const { name, value } = e.target;
+    if (name === "jobTitle") {
+      setTouchedFields((prev) => ({ ...prev, jobTitle: true }));
+      setFieldErrors((prev) => ({
+        ...prev,
+        jobTitle: validateJobTitle(value),
+      }));
+    } else if (name === "companyName") {
+      setTouchedFields((prev) => ({ ...prev, companyName: true }));
+      setFieldErrors((prev) => ({
+        ...prev,
+        companyName: validateCompanyName(value),
+      }));
+    } else if (name === "contactInfo.name") {
+      setTouchedFields((prev) => ({ ...prev, "contactInfo.name": true }));
+      setFieldErrors((prev) => ({
+        ...prev,
+        "contactInfo.name": validateContactName(value),
+      }));
+    } else if (name === "contactInfo.email") {
+      setTouchedFields((prev) => ({ ...prev, "contactInfo.email": true }));
+      setFieldErrors((prev) => ({
+        ...prev,
+        "contactInfo.email": validateEmail(value),
+      }));
+    } else if (name === "contactInfo.phone") {
+      setTouchedFields((prev) => ({ ...prev, "contactInfo.phone": true }));
+      setFieldErrors((prev) => ({
+        ...prev,
+        "contactInfo.phone": validateContactPhone(value, formData.country),
+      }));
+    }
   };
 
   const handleFileUpload = async (event) => {
@@ -285,6 +482,26 @@ const PostAJob = () => {
   const addQualification = () => {
     const val = qualInput.trim();
     if (!val) return;
+    if (/^\d+$/.test(val)) {
+      setSkillError("Skills cannot be just numbers. Please enter a valid skill name.");
+      return;
+    }
+    if (
+      !/[a-zA-Z]/.test(val) ||
+      (val.length < 2 && !["C", "R"].includes(val.toUpperCase()))
+    ) {
+      setSkillError("Please enter a valid skill name with letters (min 2 characters).");
+      return;
+    }
+    if (
+      formData.qualifications.some(
+        (q) => q.toLowerCase() === val.toLowerCase()
+      )
+    ) {
+      setSkillError("This skill has already been added.");
+      return;
+    }
+    setSkillError("");
     setFormData((prev) => ({
       ...prev,
       qualifications: [...prev.qualifications, val],
@@ -332,11 +549,109 @@ const PostAJob = () => {
       adminApproved: false,
       applicationOpen: true,
     });
+    setFieldErrors({
+      jobTitle: "",
+      companyName: "",
+      "contactInfo.name": "",
+      "contactInfo.email": "",
+      "contactInfo.phone": "",
+    });
+    setTouchedFields({
+      jobTitle: false,
+      companyName: false,
+      "contactInfo.name": false,
+      "contactInfo.email": false,
+      "contactInfo.phone": false,
+    });
     setPreviewUrl(null);
   };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+
+    const titleErr = validateJobTitle(formData.jobTitle);
+    const compErr = validateCompanyName(formData.companyName);
+    const contactNameErr = validateContactName(formData.contactInfo?.name);
+    const contactEmailErr = validateEmail(formData.contactInfo?.email);
+    const contactPhoneErr = validateContactPhone(formData.contactInfo?.phone, formData.country);
+
+    if (titleErr || compErr || contactNameErr || contactEmailErr || contactPhoneErr) {
+      setFieldErrors({
+        jobTitle: titleErr,
+        companyName: compErr,
+        "contactInfo.name": contactNameErr,
+        "contactInfo.email": contactEmailErr,
+        "contactInfo.phone": contactPhoneErr,
+      });
+      setTouchedFields({
+        jobTitle: true,
+        companyName: true,
+        "contactInfo.name": true,
+        "contactInfo.email": true,
+        "contactInfo.phone": true,
+      });
+      const firstErr =
+        titleErr ||
+        compErr ||
+        contactNameErr ||
+        contactEmailErr ||
+        contactPhoneErr;
+      setErrorMessage(firstErr);
+      setTimeout(() => setErrorMessage(""), 6000);
+      return;
+    }
+
+    if (!formData.sector) {
+      setErrorMessage("Please select a Sector.");
+      setTimeout(() => setErrorMessage(""), 6000);
+      return;
+    }
+    if (!formData.classification) {
+      setErrorMessage("Please select an Internship Classification.");
+      setTimeout(() => setErrorMessage(""), 6000);
+      return;
+    }
+    if (!formData.country) {
+      setErrorMessage("Please select a Country.");
+      setTimeout(() => setErrorMessage(""), 6000);
+      return;
+    }
+    if (!formData.state) {
+      setErrorMessage(`Please select a ${stateLabel}.`);
+      setTimeout(() => setErrorMessage(""), 6000);
+      return;
+    }
+    if (!formData.city || !formData.city.trim()) {
+      setErrorMessage("Please enter a City.");
+      setTimeout(() => setErrorMessage(""), 6000);
+      return;
+    }
+    if (!formData.jobDescription || !formData.jobDescription.trim()) {
+      setErrorMessage("Please enter a Job Description.");
+      setTimeout(() => setErrorMessage(""), 6000);
+      return;
+    }
+    if (!formData.startDate) {
+      setErrorMessage("Please select a Start Date.");
+      setTimeout(() => setErrorMessage(""), 6000);
+      return;
+    }
+    if (!formData.endDateOrDuration) {
+      setErrorMessage("Please select an End Date.");
+      setTimeout(() => setErrorMessage(""), 6000);
+      return;
+    }
+    if (!formData.mode) {
+      setErrorMessage("Please select a Mode of Internship.");
+      setTimeout(() => setErrorMessage(""), 6000);
+      return;
+    }
+    if (!formData.internshipType) {
+      setErrorMessage("Please select an Internship Type.");
+      setTimeout(() => setErrorMessage(""), 6000);
+      return;
+    }
+
     const pid = localStorage.getItem("partnerId");
     if (!pid) {
       console.error("No partner ID");
@@ -423,7 +738,7 @@ const PostAJob = () => {
     "!mt-0 w-full h-12 box-border p-3 border border-gray-300 rounded-lg bg-white text-gray-900 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:ring-offset-2 focus:ring-offset-white";
 
   return (
-    <div className="max-w-4xl font-poppins mx-auto p-6 bg-white rounded-lg shadow-lg mt-8">
+    <div className="max-w-4xl font-poppins mx-auto px-4 py-6 sm:p-6 bg-white rounded-lg shadow-lg mt-4 sm:mt-8">
       <h2 className="text-2xl font-semibold text-gray-800 mb-4">
         Post an Internship
       </h2>
@@ -432,7 +747,7 @@ const PostAJob = () => {
         {/* Job Title */}
         <div>
           <label className="block text-gray-700 font-medium mb-2">
-            Job Title
+            Job Title <span className="text-red-500">*</span>
           </label>
           {/*Add the style attribute for alignment - 04-08-2026 */}
           <input
@@ -440,17 +755,28 @@ const PostAJob = () => {
             name="jobTitle"
             value={formData.jobTitle}
             onChange={handleChange}
+            onBlur={handleBlur}
             required
-            className={inputCls}
+            maxLength={100}
+            className={`${inputCls} ${
+              touchedFields.jobTitle && fieldErrors.jobTitle
+                ? "!border-red-500 focus:!ring-red-400 bg-red-50/20"
+                : ""
+            }`}
             placeholder="Enter job title"
             style={{ marginTop: "0px" }}
           />
+          {touchedFields.jobTitle && fieldErrors.jobTitle && (
+            <p className="text-red-500 text-xs sm:text-sm mt-1 font-medium">
+              {fieldErrors.jobTitle}
+            </p>
+          )}
         </div>
 
         {/* Company Name */}
         <div>
           <label className="block text-gray-700 font-medium mb-2">
-            Company Name
+            Company Name <span className="text-red-500">*</span>
           </label>
           {/*Add the style attribute for alignment - 04-08-2026 */}
           <input
@@ -458,32 +784,34 @@ const PostAJob = () => {
             name="companyName"
             value={formData.companyName}
             onChange={handleChange}
+            onBlur={handleBlur}
             required
-            className={inputCls}
+            maxLength={100}
+            className={`${inputCls} ${
+              touchedFields.companyName && fieldErrors.companyName
+                ? "!border-red-500 focus:!ring-red-400 bg-red-50/20"
+                : ""
+            }`}
             style={{ marginTop: "0px" }}
             placeholder="Enter company name"
           />
+          {touchedFields.companyName && fieldErrors.companyName && (
+            <p className="text-red-500 text-xs sm:text-sm mt-1 font-medium">
+              {fieldErrors.companyName}
+            </p>
+          )}
         </div>
 
         {/* Sector */}
         <div>
           <label className="block text-gray-700 font-medium mb-2">Sector</label>
-          <select
+          <CustomSelect
             name="sector"
             value={formData.sector}
             onChange={handleChange}
-            required
-            className={inputCls}
-          >
-            <option value="" disabled hidden>
-              Select a Sector
-            </option>
-            {topSectors.map((s) => (
-              <option key={s.id} value={s.id}>
-                {s.name}
-              </option>
-            ))}
-          </select>
+            options={topSectors.map((s) => ({ value: s.id, label: s.name }))}
+            placeholder="Select a Sector"
+          />
         </div>
 
         {/* Classification */}
@@ -491,20 +819,17 @@ const PostAJob = () => {
           <label className="block text-gray-700 font-medium mb-2">
             Internship Classification
           </label>
-          <select
+          <CustomSelect
             name="classification"
             value={formData.classification}
             onChange={handleChange}
-            required
-            className={inputCls}
-          >
-            <option value="" disabled hidden>
-              Select Classification
-            </option>
-            <option value="Basic">Basic</option>
-            <option value="Intermediate">Intermediate</option>
-            <option value="Advanced">Advanced</option>
-          </select>
+            options={[
+              { value: "Basic", label: "Basic" },
+              { value: "Intermediate", label: "Intermediate" },
+              { value: "Advanced", label: "Advanced" },
+            ]}
+            placeholder="Select Classification"
+          />
         </div>
 
         {/* Location */}
@@ -512,13 +837,12 @@ const PostAJob = () => {
           <label className="block text-gray-700 font-medium mb-2">
             Location
           </label>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 items-end">
-            <div className="flex flex-col gap-1">
-              <label htmlFor="country" className="block text-gray-700 text-sm">
-                Country *
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 items-start">
+            <div className="w-full min-w-0 flex flex-col">
+              <label htmlFor="country" className="block text-gray-700 text-sm font-medium mb-1.5 h-5 flex items-center">
+                Country <span className="text-red-500 ml-0.5">*</span>
               </label>
-              <select
-                id="country"
+              <CustomSelect
                 name="country"
                 value={formData.country}
                 onChange={(e) => {
@@ -529,43 +853,27 @@ const PostAJob = () => {
                   }));
                   setCitySuggestions([]);
                 }}
-                required
-                className={locationInputCls}
-              >
-                <option value="" disabled hidden>
-                  Select Country
-                </option>
-                <option value="India">India</option>
-              </select>
+                options={[{ value: "India", label: "India" }]}
+                placeholder="Select Country"
+              />
             </div>
 
-            <div className="flex flex-col gap-1">
-              {/* add custom style modal for select tag for states - 07-09-2026 */}
-              <label htmlFor="state" className="block text-gray-700 text-sm">
-                {stateLabel} *
+            <div className="w-full min-w-0 flex flex-col">
+              <label htmlFor="state" className="block text-gray-700 text-sm font-medium mb-1.5 h-5 flex items-center">
+                {stateLabel} <span className="text-red-500 ml-0.5">*</span>
               </label>
-              <select
-                id="state"
+              <CustomSelect
                 name="state"
                 value={formData.state}
                 onChange={handleChange}
-                required
-                className={locationInputCls}
-              >
-                <option value="" disabled hidden>
-                  Select {stateLabel}
-                </option>
-                {stateList.map((s) => (
-                  <option key={s} value={s}>
-                    {s}
-                  </option>
-                ))}
-              </select>
+                options={stateList.map((s) => ({ value: s, label: s }))}
+                placeholder={`Select ${stateLabel}`}
+              />
             </div>
 
-            <div className="relative flex flex-col gap-1">
-              <label htmlFor="city" className="block text-gray-700 text-sm">
-                City *
+            <div className="w-full min-w-0 relative flex flex-col">
+              <label htmlFor="city" className="block text-gray-700 text-sm font-medium mb-1.5 h-5 flex items-center">
+                City <span className="text-red-500 ml-0.5">*</span>
               </label>
               <input
                 id="city"
@@ -579,11 +887,11 @@ const PostAJob = () => {
                 className={`${locationInputCls} relative z-[15]`}
               />
               {citySuggestions.length > 0 && (
-                <ul className="absolute z-[20] left-0 top-full w-full mt-2 max-h-48 overflow-y-auto bg-white border border-gray-300 rounded-lg shadow-lg">
+                <ul className="absolute z-[20] left-0 right-0 w-full mt-2 top-[72px] max-h-48 overflow-y-auto bg-white border border-gray-300 rounded-lg shadow-lg">
                   {citySuggestions.map((city) => (
                     <li
                       key={city.wikiDataId || city.id || city.name}
-                      className="px-4 py-2 cursor-pointer hover:bg-teal-50 hover:text-teal-700"
+                      className="px-4 py-2 cursor-pointer hover:bg-teal-50 hover:text-teal-700 break-words text-sm"
                       onClick={() => handleCitySelect(city.name)}
                     >
                       {city.name}
@@ -606,10 +914,11 @@ const PostAJob = () => {
             value={formData.jobDescription}
             onChange={handleChange}
             required
+            maxLength={4000}
             rows="4"
             className={inputCls}
             style={{ marginTop: "0px" }}
-            placeholder="Describe the job responsibilities, requirements, etc."
+            placeholder="Describe the job responsibilities, requirements, etc. (max 4000 chars)"
           />
         </div>
 
@@ -618,21 +927,34 @@ const PostAJob = () => {
           <label className="block text-gray-700 font-medium mb-2">
             Start Date
           </label>
-          {/*Add the style attribute for alignment - 04-08-2026 */}
-          <input
-            type="date"
-            name="startDate"
-            value={formData.startDate}
-            onChange={handleChange}
-            required
-            min={(() => {
-              const d = new Date();
-              d.setMonth(d.getMonth() + 1);
-              return d.toISOString().split("T")[0];
-            })()}
-            className={inputCls}
-            style={{ marginTop: "0px" }}
-          />
+          <div className="relative w-full">
+            <DatePicker
+              selected={
+                formData.startDate ? new Date(formData.startDate + "T00:00:00") : null
+              }
+              onChange={(date) => {
+                if (!date) {
+                  handleChange({ target: { name: "startDate", value: "" } });
+                } else {
+                  const y = date.getFullYear();
+                  const m = String(date.getMonth() + 1).padStart(2, "0");
+                  const d = String(date.getDate()).padStart(2, "0");
+                  handleChange({
+                    target: { name: "startDate", value: `${y}-${m}-${d}` },
+                  });
+                }
+              }}
+              minDate={(() => {
+                const d = new Date();
+                d.setMonth(d.getMonth() + 1);
+                return d;
+              })()}
+              dateFormat="yyyy-MM-dd"
+              placeholderText="Select start date (YYYY-MM-DD)"
+              className="w-full h-12 box-border p-3 border border-gray-300 rounded-lg bg-white text-gray-900 focus:outline-none focus:ring-2 focus:ring-teal-500 font-poppins text-sm cursor-pointer"
+              wrapperClassName="w-full"
+            />
+          </div>
         </div>
 
         {/* End Date */}
@@ -640,21 +962,40 @@ const PostAJob = () => {
           <label className="block text-gray-700 font-medium mb-2">
             End Date
           </label>
-          {/*Add the style attribute for alignment - 04-08-2026 */}
-          <input
-            type="date"
-            name="endDateOrDuration"
-            value={formData.endDateOrDuration}
-            onChange={handleChange}
-            required
-            min={(() => {
-              const base = formData.startDate ? new Date(formData.startDate) : new Date();
-              base.setMonth(base.getMonth() + 1);
-              return base.toISOString().split("T")[0];
-            })()}
-            className={inputCls}
-            style={{ marginTop: "0px" }}
-          />
+          <div className="relative w-full">
+            <DatePicker
+              selected={
+                formData.endDateOrDuration
+                  ? new Date(formData.endDateOrDuration + "T00:00:00")
+                  : null
+              }
+              onChange={(date) => {
+                if (!date) {
+                  handleChange({
+                    target: { name: "endDateOrDuration", value: "" },
+                  });
+                } else {
+                  const y = date.getFullYear();
+                  const m = String(date.getMonth() + 1).padStart(2, "0");
+                  const d = String(date.getDate()).padStart(2, "0");
+                  handleChange({
+                    target: { name: "endDateOrDuration", value: `${y}-${m}-${d}` },
+                  });
+                }
+              }}
+              minDate={(() => {
+                const base = formData.startDate
+                  ? new Date(formData.startDate + "T00:00:00")
+                  : new Date();
+                base.setMonth(base.getMonth() + 1);
+                return base;
+              })()}
+              dateFormat="yyyy-MM-dd"
+              placeholderText="Select end date (YYYY-MM-DD)"
+              className="w-full h-12 box-border p-3 border border-gray-300 rounded-lg bg-white text-gray-900 focus:outline-none focus:ring-2 focus:ring-teal-500 font-poppins text-sm cursor-pointer"
+              wrapperClassName="w-full"
+            />
+          </div>
         </div>
 
         {/* Calculated Duration */}
@@ -679,20 +1020,17 @@ const PostAJob = () => {
           <label className="block text-gray-700 font-medium mb-2">
             Mode of Internship
           </label>
-          <select
+          <CustomSelect
             name="mode"
             value={formData.mode}
             onChange={handleChange}
-            required
-            className={inputCls}
-          >
-            <option value="" disabled hidden>
-              Select Mode
-            </option>
-            <option value="Online">Online</option>
-            <option value="Offline">Offline</option>
-            <option value="Hybrid">Hybrid</option>
-          </select>
+            options={[
+              { value: "Online", label: "Online" },
+              { value: "Offline", label: "Offline" },
+              { value: "Hybrid", label: "Hybrid" },
+            ]}
+            placeholder="Select Mode"
+          />
         </div>
 
         {/* Qualifications */}
@@ -725,7 +1063,11 @@ const PostAJob = () => {
               id="qualInput"
               type="text"
               value={qualInput}
-              onChange={(e) => setQualInput(e.target.value)}
+              onChange={(e) => {
+                setQualInput(e.target.value);
+                if (skillError) setSkillError("");
+              }}
+              maxLength={50}
               onKeyDown={(e) => {
                 if (e.key === "Enter") {
                   e.preventDefault();
@@ -747,6 +1089,11 @@ const PostAJob = () => {
               + Add
             </button>
           </div>
+          {skillError && (
+            <p className="text-xs text-red-500 font-medium mt-1">
+              {skillError}
+            </p>
+          )}
           <p className="text-xs text-gray-400 mt-1">
             Press Enter or click Add. Click &times; to remove a skill.
           </p>
@@ -755,36 +1102,77 @@ const PostAJob = () => {
         {/* Contact Information */}
         <div>
           <label className="block text-gray-700 font-medium mb-2">
-            Contact Information
+            Contact Information <span className="text-red-500">*</span>
           </label>
-          <div className="space-y-2">
-            <input
-              type="text"
-              name="contactInfo.name"
-              value={formData.contactInfo.name}
-              onChange={handleChange}
-              required
-              className={inputCls}
-              placeholder="Contact Name"
-            />
-            <input
-              type="email"
-              name="contactInfo.email"
-              value={formData.contactInfo.email}
-              onChange={handleChange}
-              required
-              className={inputCls}
-              placeholder="Contact Email"
-            />
-            <input
-              type="tel"
-              name="contactInfo.phone"
-              value={formData.contactInfo.phone}
-              onChange={handleChange}
-              required
-              className={inputCls}
-              placeholder="Contact Phone"
-            />
+          <div className="space-y-3">
+            <div>
+              <input
+                type="text"
+                name="contactInfo.name"
+                value={formData.contactInfo.name}
+                onChange={handleChange}
+                onBlur={handleBlur}
+                required
+                maxLength={60}
+                className={`${inputCls} ${
+                  touchedFields["contactInfo.name"] && fieldErrors["contactInfo.name"]
+                    ? "!border-red-500 focus:!ring-red-400 bg-red-50/20"
+                    : ""
+                }`}
+                placeholder="Contact Name (e.g. Priya Sharma)"
+              />
+              {touchedFields["contactInfo.name"] && fieldErrors["contactInfo.name"] && (
+                <p className="text-xs text-red-500 mt-1 font-medium flex items-center gap-1">
+                  <span>⚠️</span> {fieldErrors["contactInfo.name"]}
+                </p>
+              )}
+            </div>
+
+            <div>
+              <input
+                type="email"
+                name="contactInfo.email"
+                value={formData.contactInfo.email}
+                onChange={handleChange}
+                onBlur={handleBlur}
+                required
+                maxLength={80}
+                className={`${inputCls} ${
+                  touchedFields["contactInfo.email"] && fieldErrors["contactInfo.email"]
+                    ? "!border-red-500 focus:!ring-red-400 bg-red-50/20"
+                    : ""
+                }`}
+                placeholder="Contact Email (e.g. name@example.com)"
+              />
+              {touchedFields["contactInfo.email"] && fieldErrors["contactInfo.email"] && (
+                <p className="text-xs text-red-500 mt-1 font-medium flex items-center gap-1">
+                  <span>⚠️</span> {fieldErrors["contactInfo.email"]}
+                </p>
+              )}
+            </div>
+
+            <div>
+              <input
+                type="tel"
+                name="contactInfo.phone"
+                value={formData.contactInfo.phone}
+                onChange={handleChange}
+                onBlur={handleBlur}
+                required
+                maxLength={25}
+                className={`${inputCls} ${
+                  touchedFields["contactInfo.phone"] && fieldErrors["contactInfo.phone"]
+                    ? "!border-red-500 focus:!ring-red-400 bg-red-50/20"
+                    : ""
+                }`}
+                placeholder="Contact Phone (e.g. 9876543210)"
+              />
+              {touchedFields["contactInfo.phone"] && fieldErrors["contactInfo.phone"] && (
+                <p className="text-xs text-red-500 mt-1 font-medium flex items-center gap-1">
+                  <span>⚠️</span> {fieldErrors["contactInfo.phone"]}
+                </p>
+              )}
+            </div>
           </div>
         </div>
 
@@ -835,20 +1223,18 @@ const PostAJob = () => {
           />
 
           {/* Select for Free / Stipend */}
-          <select
+          <CustomSelect
+            name="internshipType"
             value={
               formData.internshipType === "PAID" ? "" : formData.internshipType
             }
             onChange={handleChange}
-            name="internshipType"
-            className={inputCls}
-          >
-            <option value="" disabled hidden>
-              Select Internship Type
-            </option>
-            <option value="FREE">Free</option>
-            <option value="STIPEND">Stipend</option>
-          </select>
+            options={[
+              { value: "FREE", label: "Free" },
+              { value: "STIPEND", label: "Stipend" },
+            ]}
+            placeholder="Select Internship Type"
+          />
 
           {/* Description banner for Free or Stipend */}
           {(formData.internshipType === "FREE" ||
@@ -954,18 +1340,13 @@ const PostAJob = () => {
               <label className="block text-gray-700 font-medium mb-2">
                 Currency
               </label>
-              <select
+              <CustomSelect
                 name="compensationDetails.currency"
                 value={formData.compensationDetails.currency}
                 onChange={handleChange}
-                required
-                className={inputCls}
-              >
-                <option value="" disabled hidden>
-                  Select Currency
-                </option>
-                <option value="INR">INR</option>
-              </select>
+                options={[{ value: "INR", label: "INR" }]}
+                placeholder="Select Currency"
+              />
             </div>
 
             {/* Frequency is always One Time - hidden */}
@@ -1022,15 +1403,23 @@ const PostAJob = () => {
 
       {/* Freemium upgrade alert */}
       {freemiumAlert && (
-        <div className="fixed top-28 right-10 z-[9999] bg-orange-500 text-white py-3 px-6 rounded-lg shadow-lg transition-all duration-300">
+        <div className="fixed top-5 left-4 right-4 sm:left-auto sm:right-8 sm:top-20 z-[9999] max-w-md bg-orange-500 text-white py-3 px-5 rounded-xl shadow-2xl transition-all duration-300 text-sm font-medium">
           {freemiumAlert}
         </div>
       )}
 
       {/* Error toast */}
       {errorMessage && (
-        <div className="fixed top-36 right-10 z-[9999] bg-red-600 text-white py-3 px-6 rounded-lg shadow-lg transition-all duration-300">
-          {errorMessage}
+        <div className="fixed top-5 left-4 right-4 sm:left-auto sm:right-8 sm:top-20 z-[9999] max-w-md bg-red-600 text-white py-3 px-5 rounded-xl shadow-2xl transition-all duration-300 text-sm font-medium flex items-start justify-between gap-3 animate-fade-in">
+          <span>{errorMessage}</span>
+          <button
+            type="button"
+            onClick={() => setErrorMessage("")}
+            className="text-white/80 hover:text-white font-bold ml-2 text-base leading-none"
+            aria-label="Close error"
+          >
+            &times;
+          </button>
         </div>
       )}
     </div>

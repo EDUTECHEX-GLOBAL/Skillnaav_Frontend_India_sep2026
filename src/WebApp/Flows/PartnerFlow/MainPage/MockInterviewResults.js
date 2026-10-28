@@ -1,5 +1,8 @@
 import React, { useState, useEffect, useMemo, useRef } from "react";
 import axios from "../../../../api/axiosInstance";
+import DatePicker from "react-datepicker";
+import "react-datepicker/dist/react-datepicker.css";
+import { toCalendarDateInput, formatCalendarDate, parseCalendarDateNoon } from "../../../../utils/dateUtils";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import {
   faCalendarAlt,
@@ -19,6 +22,187 @@ import {
   faBriefcase,
   faArrowLeft,
 } from "@fortawesome/free-solid-svg-icons";
+
+
+// Custom Time Picker (Width strictly bound to trigger input box)
+const RescheduleTimePicker = ({ value, onChange, placeholder = "HH:MM" }) => {
+  const [isOpen, setIsOpen] = useState(false);
+  const containerRef = useRef(null);
+
+  const [currHour, currMin] = (value || "").split(":");
+  const selectedHour = currHour !== undefined && currHour !== "" ? currHour.padStart(2, "0") : "";
+  const selectedMin = currMin !== undefined && currMin !== "" ? currMin.padStart(2, "0") : "";
+
+  const hours = Array.from({ length: 24 }, (_, i) => String(i).padStart(2, "0"));
+  const minutes = Array.from({ length: 60 }, (_, i) => String(i).padStart(2, "0"));
+
+  useEffect(() => {
+    const handleOutsideClick = (e) => {
+      if (containerRef.current && !containerRef.current.contains(e.target)) {
+        setIsOpen(false);
+      }
+    };
+    if (isOpen) {
+      document.addEventListener("mousedown", handleOutsideClick);
+      document.addEventListener("touchstart", handleOutsideClick);
+    }
+    return () => {
+      document.removeEventListener("mousedown", handleOutsideClick);
+      document.removeEventListener("touchstart", handleOutsideClick);
+    };
+  }, [isOpen]);
+
+  return (
+    <div ref={containerRef} className={`relative w-full ${isOpen ? "z-[80]" : "z-[1]"}`}>
+      <button
+        type="button"
+        onClick={() => setIsOpen((prev) => !prev)}
+        className="w-full flex items-center justify-between text-left bg-slate-50 border border-slate-200/80 rounded-2xl px-4 py-3 text-xs font-bold text-slate-700 outline-none focus:border-indigo-500 cursor-pointer"
+      >
+        <span className="flex items-center gap-2">
+          <FontAwesomeIcon icon={faClock} className="text-slate-400" />
+          <span className={value ? "text-slate-800" : "text-slate-400"}>{value || placeholder}</span>
+        </span>
+      </button>
+
+      {isOpen && (
+        <div
+          className="absolute z-[90] left-0 right-0 w-full mt-1 bg-white border border-slate-200 rounded-xl shadow-2xl p-2.5"
+          style={{ width: "100%", maxWidth: "100%", boxSizing: "border-box" }}
+        >
+          <div className="grid grid-cols-2 text-center text-[10px] uppercase font-bold text-slate-400 pb-1 border-b mb-1.5">
+            <span>Hour</span>
+            <span>Minute</span>
+          </div>
+          <div className="grid grid-cols-2 gap-1.5 h-40">
+            <div className="overflow-y-auto pr-1 space-y-0.5">
+              {hours.map((h) => (
+                <button
+                  key={h}
+                  type="button"
+                  onClick={() => onChange({ target: { value: `${h}:${selectedMin || '00'}` } })}
+                  className={`w-full py-1 text-xs text-center rounded ${selectedHour === h ? 'bg-indigo-600 text-white font-bold' : 'text-slate-700 hover:bg-indigo-50'}`}
+                >
+                  {h}
+                </button>
+              ))}
+            </div>
+            <div className="overflow-y-auto pr-1 space-y-0.5">
+              {minutes.map((m) => (
+                <button
+                  key={m}
+                  type="button"
+                  onClick={() => onChange({ target: { value: `${selectedHour || '09'}:${m}` } })}
+                  className={`w-full py-1 text-xs text-center rounded ${selectedMin === m ? 'bg-indigo-600 text-white font-bold' : 'text-slate-700 hover:bg-indigo-50'}`}
+                >
+                  {m}
+                </button>
+              ))}
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={() => setIsOpen(false)}
+            className="w-full mt-2 py-1 text-xs font-bold bg-indigo-50 text-indigo-600 hover:bg-indigo-100 rounded-lg"
+          >
+            Done
+          </button>
+        </div>
+      )}
+    </div>
+  );
+};
+
+// Custom Status Filter Dropdown (Down box width matches top box width exactly)
+const MOCK_STATUS_OPTIONS = [
+  { value: "ALL", label: "All Statuses" },
+  { value: "COMPLETED", label: "Completed" },
+  { value: "UPCOMING", label: "Upcoming" },
+  { value: "MISSED", label: "Missed" },
+];
+
+const StatusFilterDropdown = ({ value, onChange }) => {
+  const [isOpen, setIsOpen] = useState(false);
+  const containerRef = useRef(null);
+
+  const selectedOption =
+    MOCK_STATUS_OPTIONS.find((opt) => opt.value === value) || MOCK_STATUS_OPTIONS[0];
+
+  useEffect(() => {
+    const handleOutsideClick = (e) => {
+      if (containerRef.current && !containerRef.current.contains(e.target)) {
+        setIsOpen(false);
+      }
+    };
+    if (isOpen) {
+      document.addEventListener("mousedown", handleOutsideClick);
+      document.addEventListener("touchstart", handleOutsideClick);
+    }
+    return () => {
+      document.removeEventListener("mousedown", handleOutsideClick);
+      document.removeEventListener("touchstart", handleOutsideClick);
+    };
+  }, [isOpen]);
+
+  return (
+    <div
+      ref={containerRef}
+      className={`relative h-full w-32 sm:w-36 shrink-0 ${isOpen ? "z-[80]" : "z-[1]"}`}
+    >
+      <button
+        type="button"
+        onClick={() => setIsOpen((prev) => !prev)}
+        className={`w-full h-full px-3 bg-white border rounded-xl text-xs font-semibold outline-none transition-all flex items-center justify-between gap-1.5 cursor-pointer shadow-[0_2px_10px_rgb(0,0,0,0.02)] text-slate-700 box-border ${
+          isOpen
+            ? "border-indigo-500 ring-2 ring-indigo-100"
+            : "border-indigo-50 hover:border-indigo-200"
+        }`}
+        aria-haspopup="listbox"
+        aria-expanded={isOpen}
+      >
+        <span className="truncate">{selectedOption.label}</span>
+        <FontAwesomeIcon
+          icon={faChevronDown}
+          className={`text-[9px] text-slate-400 shrink-0 transition-transform duration-200 ${
+            isOpen ? "rotate-180 text-indigo-600" : ""
+          }`}
+        />
+      </button>
+
+      {isOpen && (
+        <div
+          className="absolute left-0 right-0 top-full mt-1.5 w-full bg-white border border-indigo-100 rounded-xl shadow-xl z-50 overflow-hidden py-1 divide-y divide-slate-50 box-border"
+          style={{ width: "100%", maxWidth: "100%", boxSizing: "border-box" }}
+          role="listbox"
+        >
+          {MOCK_STATUS_OPTIONS.map((opt) => {
+            const isSelected = value === opt.value;
+            return (
+              <button
+                key={opt.value}
+                type="button"
+                onClick={() => {
+                  onChange(opt.value);
+                  setIsOpen(false);
+                }}
+                className={`w-full text-left px-3 py-2 text-xs font-semibold transition-colors flex items-center justify-between cursor-pointer ${
+                  isSelected
+                    ? "bg-indigo-50 text-indigo-700 font-bold"
+                    : "text-slate-700 hover:bg-slate-50"
+                }`}
+              >
+                <span className="truncate">{opt.label}</span>
+                {isSelected && (
+                  <span className="w-1.5 h-1.5 rounded-full bg-indigo-600 shrink-0 ml-1.5" />
+                )}
+              </button>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+};
 
 // Reusable Statistics Card Component
 const StatCard = ({
@@ -259,6 +443,23 @@ const MockInterviewResults = () => {
   });
   const [deletingScheduleId, setDeletingScheduleId] = useState(null); // Delete schedule Modal
   const [isTimelineOpen, setIsTimelineOpen] = useState(false); // Timeline accordion toggle
+  const timelineRef = useRef(null);
+
+  useEffect(() => {
+    const handleOutsideClick = (e) => {
+      if (timelineRef.current && !timelineRef.current.contains(e.target)) {
+        setIsTimelineOpen(false);
+      }
+    };
+    if (isTimelineOpen) {
+      document.addEventListener("mousedown", handleOutsideClick);
+      document.addEventListener("touchstart", handleOutsideClick);
+    }
+    return () => {
+      document.removeEventListener("mousedown", handleOutsideClick);
+      document.removeEventListener("touchstart", handleOutsideClick);
+    };
+  }, [isTimelineOpen]);
 
   const studentListRef = useRef(null);
 
@@ -391,7 +592,7 @@ const MockInterviewResults = () => {
   const handleEditOpen = (mi) => {
     setEditingSchedule(mi);
     setEditFormData({
-      date: mi.date ? new Date(mi.date).toISOString().split("T")[0] : "",
+      date: mi.date ? toCalendarDateInput(mi.date) : "",
       startTime: mi.startTime || "",
       endTime: mi.endTime || "",
     });
@@ -684,9 +885,9 @@ const MockInterviewResults = () => {
               </h3>
 
               {/* Interview Timeline Dropdown */}
-              <div className="relative z-20">
+              <div className="relative z-20 w-full sm:w-auto" ref={timelineRef}>
                 <div
-                  className="bg-blue-50 border border-blue-100 rounded-xl px-4 py-2.5 cursor-pointer flex justify-between items-center gap-6 hover:bg-blue-100/50 transition-colors shadow-sm"
+                  className="bg-blue-50 border border-blue-100 rounded-xl px-4 py-2.5 cursor-pointer flex justify-between items-center gap-6 hover:bg-blue-100/50 transition-colors shadow-sm w-full sm:w-auto"
                   onClick={() => setIsTimelineOpen(!isTimelineOpen)}
                 >
                   <div>
@@ -705,9 +906,9 @@ const MockInterviewResults = () => {
 
                 {/* Timeline Absolute Dropdown Menu */}
                 <div
-                  className={`absolute right-0 top-full mt-2 w-64 bg-white border border-slate-100 shadow-[0_8px_30px_rgb(0,0,0,0.08)] rounded-2xl z-20 transition-all duration-300 origin-top-right ${isTimelineOpen ? "scale-100 opacity-100" : "scale-95 opacity-0 pointer-events-none"}`}
+                  className={`absolute left-0 sm:left-auto sm:right-0 top-full mt-2 w-full sm:w-80 max-w-[calc(100vw-32px)] bg-white border border-slate-100 shadow-[0_8px_30px_rgb(0,0,0,0.08)] rounded-2xl z-20 transition-all duration-300 origin-top-left sm:origin-top-right overflow-hidden ${isTimelineOpen ? "scale-100 opacity-100" : "scale-95 opacity-0 pointer-events-none"}`}
                 >
-                  <div className="relative border-l border-slate-100 pl-5 ml-8 space-y-6 pb-6 pt-5">
+                  <div className="relative border-l border-slate-100 pl-5 ml-8 space-y-6 pb-6 pt-5 pr-4 max-h-80 overflow-y-auto">
                     {sortedTimeline.map((mi, i) => {
                       const isUpcoming =
                         mi.date && new Date(mi.date) >= new Date();
@@ -1017,19 +1218,13 @@ const MockInterviewResults = () => {
                             className="absolute left-3 text-indigo-300 text-[10px]"
                           />
                         </div>
-                        <select
+                        <StatusFilterDropdown
                           value={statusFilter}
-                          onChange={(e) => {
-                            setStatusFilter(e.target.value);
+                          onChange={(val) => {
+                            setStatusFilter(val);
                             setCurrentPage(1);
                           }}
-                          className="h-full px-3 bg-white border border-indigo-50 rounded-xl text-xs font-semibold outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 cursor-pointer shadow-[0_2px_10px_rgb(0,0,0,0.02)] text-slate-700 box-border"
-                        >
-                          <option value="ALL">All Statuses</option>
-                          <option value="COMPLETED">Completed</option>
-                          <option value="UPCOMING">Upcoming</option>
-                          <option value="MISSED">Missed</option>
-                        </select>
+                        />
                       </div>
                     </div>
 
@@ -1191,14 +1386,25 @@ const MockInterviewResults = () => {
                 <label className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">
                   Date
                 </label>
-                <input
-                  type="date"
-                  value={editFormData.date}
-                  onChange={(e) =>
-                    setEditFormData({ ...editFormData, date: e.target.value })
-                  }
-                  className="bg-slate-50 border border-slate-200/80 rounded-2xl px-4 py-3 text-xs font-bold text-slate-700 outline-none focus:border-indigo-500 cursor-pointer"
-                />
+                <div className="relative w-full">
+                  <DatePicker
+                    selected={parseCalendarDateNoon(editFormData.date)}
+                    onChange={(date) => {
+                      if (!date) {
+                        setEditFormData({ ...editFormData, date: "" });
+                      } else {
+                        const y = date.getFullYear();
+                        const m = String(date.getMonth() + 1).padStart(2, "0");
+                        const d = String(date.getDate()).padStart(2, "0");
+                        setEditFormData({ ...editFormData, date: `${y}-${m}-${d}` });
+                      }
+                    }}
+                    dateFormat="dd-MM-yyyy"
+                    placeholderText="DD-MM-YYYY"
+                    className="w-full bg-slate-50 border border-slate-200/80 rounded-2xl px-4 py-3 text-xs font-bold text-slate-700 outline-none focus:border-indigo-500 cursor-pointer"
+                    wrapperClassName="w-full"
+                  />
+                </div>
               </div>
 
               <div className="grid grid-cols-2 gap-4">
@@ -1206,8 +1412,7 @@ const MockInterviewResults = () => {
                   <label className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">
                     Start Time
                   </label>
-                  <input
-                    type="time"
+                  <RescheduleTimePicker
                     value={editFormData.startTime}
                     onChange={(e) =>
                       setEditFormData({
@@ -1215,15 +1420,13 @@ const MockInterviewResults = () => {
                         startTime: e.target.value,
                       })
                     }
-                    className="bg-slate-50 border border-slate-200/80 rounded-2xl px-4 py-3 text-xs font-bold text-slate-700 outline-none focus:border-indigo-500 cursor-pointer"
                   />
                 </div>
                 <div className="flex flex-col gap-1.5">
                   <label className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">
                     End Time
                   </label>
-                  <input
-                    type="time"
+                  <RescheduleTimePicker
                     value={editFormData.endTime}
                     onChange={(e) =>
                       setEditFormData({
@@ -1231,7 +1434,6 @@ const MockInterviewResults = () => {
                         endTime: e.target.value,
                       })
                     }
-                    className="bg-slate-50 border border-slate-200/80 rounded-2xl px-4 py-3 text-xs font-bold text-slate-700 outline-none focus:border-indigo-500 cursor-pointer"
                   />
                 </div>
               </div>

@@ -52,6 +52,15 @@ import {
   faTrash,
   faArrowsRotate,
 } from "@fortawesome/free-solid-svg-icons";
+import {
+  validateJobTitle,
+  validateCompanyName,
+  validateContactName,
+  validateEmail,
+  validateContactPhone,
+} from "../../../../utils/validators";
+import DatePicker from "react-datepicker";
+import "react-datepicker/dist/react-datepicker.css";
 
 Modal.setAppElement("#root");
 
@@ -254,9 +263,141 @@ const FormSectionLabel = ({ icon, children }) => (
   </p>
 );
 
+// ─── CustomSelect ─────────────────────────────────────────────────────────────
+// Ensures the dropdown menu ("down box") strictly matches the width of the trigger ("top box")
+const CustomSelect = ({
+  value,
+  onChange,
+  options,
+  placeholder = "Select an option",
+  className = "",
+  buttonClassName = "",
+  menuClassName = "",
+  disabled = false,
+  ariaLabel,
+}) => {
+  const [isOpen, setIsOpen] = useState(false);
+  const containerRef = useRef(null);
+
+  const normalizedOptions = options.map((opt) =>
+    typeof opt === "object" && opt !== null && "value" in opt
+      ? opt
+      : { value: opt, label: opt }
+  );
+
+  const selectedOption = normalizedOptions.find(
+    (opt) => String(opt.value) === String(value)
+  );
+
+  useEffect(() => {
+    const handleOutsideClick = (e) => {
+      if (containerRef.current && !containerRef.current.contains(e.target)) {
+        setIsOpen(false);
+      }
+    };
+    if (isOpen) {
+      document.addEventListener("mousedown", handleOutsideClick);
+      document.addEventListener("touchstart", handleOutsideClick);
+    }
+    return () => {
+      document.removeEventListener("mousedown", handleOutsideClick);
+      document.removeEventListener("touchstart", handleOutsideClick);
+    };
+  }, [isOpen]);
+
+  const handleSelect = (val) => {
+    if (onChange) {
+      onChange({ target: { value: val } });
+    }
+    setIsOpen(false);
+  };
+
+  return (
+    <div
+      ref={containerRef}
+      className={`relative ${className} ${isOpen ? "z-[60]" : "z-[1]"}`}
+      style={{ fontFamily: "'Poppins', sans-serif" }}
+    >
+      <button
+        type="button"
+        disabled={disabled}
+        aria-label={ariaLabel}
+        onClick={() => setIsOpen((prev) => !prev)}
+        className={`w-full flex items-center justify-between text-left transition-all ${
+          isOpen
+            ? "ring-2 ring-indigo-300 border-indigo-400"
+            : "hover:border-gray-400"
+        } ${
+          disabled
+            ? "opacity-60 cursor-not-allowed bg-gray-50"
+            : "cursor-pointer bg-white"
+        } ${buttonClassName}`}
+      >
+        <span
+          className={`truncate pr-2 ${
+            selectedOption ? "text-gray-700 font-normal" : "text-gray-400 font-normal"
+          }`}
+        >
+          {selectedOption ? selectedOption.label : placeholder}
+        </span>
+        <svg
+          className={`w-4 h-4 flex-shrink-0 text-gray-500 transition-transform duration-200 ${
+            isOpen ? "rotate-180 text-indigo-600" : ""
+          }`}
+          fill="none"
+          stroke="currentColor"
+          viewBox="0 0 24 24"
+        >
+          <path
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            strokeWidth="2"
+            d="M19 9l-7 7-7-7"
+          />
+        </svg>
+      </button>
+
+      {/* Down Box (Dropdown Menu) - strictly w-full left-0 right-0 */}
+      {isOpen && (
+        <div
+          className={`absolute z-[70] left-0 right-0 w-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg max-h-60 overflow-y-auto py-1 ${menuClassName}`}
+          style={{ width: "100%", maxWidth: "100%", boxSizing: "border-box" }}
+        >
+          {normalizedOptions.length === 0 ? (
+            <div className="px-3 py-2 text-xs text-gray-400 text-center">
+              No options
+            </div>
+          ) : (
+            normalizedOptions.map((opt) => {
+              const isSelected = String(value) === String(opt.value);
+              return (
+                <div
+                  key={opt.value}
+                  onClick={() => handleSelect(opt.value)}
+                  className={`px-3 py-2 text-sm cursor-pointer transition-colors break-words leading-relaxed ${
+                    isSelected
+                      ? "bg-indigo-50 text-indigo-700 font-medium"
+                      : "text-gray-700 hover:bg-indigo-50/70 hover:text-indigo-600"
+                  }`}
+                >
+                  {opt.label}
+                </div>
+              );
+            })
+          )}
+        </div>
+      )}
+    </div>
+  );
+};
+
 // ─── DateInput ────────────────────────────────────────────────────────────────
 const DateInput = ({ label, value, onChange, min }) => {
-  const displayVal = value ? String(value).slice(0, 10) : "";
+  const parsedDate = value
+    ? new Date(String(value).slice(0, 10) + "T00:00:00")
+    : null;
+  const parsedMin = min ? new Date(min + "T00:00:00") : undefined;
+
   return (
     <div>
       <label
@@ -265,19 +406,24 @@ const DateInput = ({ label, value, onChange, min }) => {
       >
         {label}
       </label>
-      <div className="relative">
-        <span className="absolute left-3 inset-y-0 flex items-center text-indigo-400 pointer-events-none">
-          <FontAwesomeIcon icon={faCalendarDays} className="text-sm" />
-        </span>
-        <input
-          type="date"
-          value={displayVal}
-          onChange={(e) => onChange(e.target.value)}
-          min={min}
-          className="w-full pl-9 pr-3 py-2 border border-gray-200 rounded-lg text-sm
-                     focus:outline-none focus:ring-2 focus:ring-indigo-400 focus:border-transparent
-                     bg-white text-gray-700 cursor-pointer"
-          style={{ fontFamily: "'Poppins', sans-serif" }}
+      <div className="relative w-full">
+        <DatePicker
+          selected={parsedDate}
+          onChange={(date) => {
+            if (!date) {
+              onChange("");
+            } else {
+              const y = date.getFullYear();
+              const m = String(date.getMonth() + 1).padStart(2, "0");
+              const d = String(date.getDate()).padStart(2, "0");
+              onChange(`${y}-${m}-${d}`);
+            }
+          }}
+          minDate={parsedMin}
+          dateFormat="yyyy-MM-dd"
+          placeholderText="YYYY-MM-DD"
+          className="w-full h-10 box-border px-3 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 bg-white text-gray-700 cursor-pointer"
+          wrapperClassName="w-full"
         />
       </div>
     </div>
@@ -286,10 +432,27 @@ const DateInput = ({ label, value, onChange, min }) => {
 
 const QualTagInput = ({ qualifications, onChange }) => {
   const [inputVal, setInputVal] = useState("");
+  const [skillError, setSkillError] = useState("");
 
   const addTag = () => {
     const val = inputVal.trim();
-    if (!val || qualifications.includes(val)) return;
+    if (!val) return;
+    if (/^\d+$/.test(val)) {
+      setSkillError("Skills cannot be just numbers. Please enter a valid skill name.");
+      return;
+    }
+    if (
+      !/[a-zA-Z]/.test(val) ||
+      (val.length < 2 && !["C", "R"].includes(val.toUpperCase()))
+    ) {
+      setSkillError("Please enter a valid skill name with letters (min 2 characters).");
+      return;
+    }
+    if (qualifications.some((q) => q.toLowerCase() === val.toLowerCase())) {
+      setSkillError("This skill has already been added.");
+      return;
+    }
+    setSkillError("");
     onChange([...qualifications, val]);
     setInputVal("");
   };
@@ -332,7 +495,10 @@ const QualTagInput = ({ qualifications, onChange }) => {
         <input
           type="text"
           value={inputVal}
-          onChange={(e) => setInputVal(e.target.value)}
+          onChange={(e) => {
+            setInputVal(e.target.value);
+            if (skillError) setSkillError("");
+          }}
           onKeyDown={(e) => {
             if (e.key === "Enter") {
               e.preventDefault();
@@ -357,6 +523,11 @@ const QualTagInput = ({ qualifications, onChange }) => {
           Add
         </button>
       </div>
+      {skillError && (
+        <p className="text-xs text-red-500 font-medium mt-1">
+          {skillError}
+        </p>
+      )}
       <p
         className="text-xs text-gray-400 mt-1"
         style={{ fontFamily: "'Poppins', sans-serif" }}
@@ -372,11 +543,11 @@ const QualTagInput = ({ qualifications, onChange }) => {
 const ViewModalBody = ({ internship: i, onEdit, onClose }) => (
   <>
     {/* ── Gradient hero header ── */}
-    <div className="flex-shrink-0 relative bg-gradient-to-r from-indigo-600 to-purple-600 px-6 pt-6 pb-14 rounded-t-2xl">
+    <div className="flex-shrink-0 relative bg-gradient-to-r from-indigo-600 to-purple-600 px-6 pt-6 pb-6 rounded-t-2xl">
       <button
         onClick={onClose}
         className="absolute top-4 right-4 w-8 h-8 flex items-center justify-center rounded-full
-          bg-white/20 text-white hover:bg-white/40 transition font-bold"
+          bg-white/20 text-white hover:bg-white/40 transition font-bold z-20"
         style={{ fontFamily: "'Poppins', sans-serif" }}
       >
         <FontAwesomeIcon icon={faXmark} />
@@ -390,38 +561,40 @@ const ViewModalBody = ({ internship: i, onEdit, onClose }) => (
           height="56"
           loading="eager"
           fetchPriority="high"
-          className="w-14 h-14 rounded-xl object-contain bg-white p-1 shadow"
+          className="w-14 h-14 rounded-xl object-contain bg-white p-1 shadow flex-shrink-0"
         />
-        <div className="min-w-0">
+        <div className="min-w-0 flex-1 overflow-hidden">
           <h2
-            className="text-xl font-bold text-white leading-tight"
+            className="text-xl font-bold text-white leading-tight break-words"
             style={{ fontFamily: "'Poppins', sans-serif" }}
           >
             {i.jobTitle}
           </h2>
           <p
-            className="text-indigo-100 text-sm mt-0.5 font-medium flex items-center gap-1.5"
+            className="text-indigo-100 text-sm mt-0.5 font-medium flex items-center gap-1.5 break-words"
             style={{ fontFamily: "'Poppins', sans-serif" }}
           >
             <FontAwesomeIcon
               icon={faBriefcase}
-              className="text-[10px] opacity-70"
+              className="text-[10px] opacity-70 flex-shrink-0"
             />
-            {i.companyName}
+            <span className="truncate">{i.companyName}</span>
           </p>
           <p
-            className="text-indigo-200 text-xs mt-0.5 flex items-center gap-1"
+            className="text-indigo-200 text-xs mt-0.5 flex items-start gap-1 break-words break-all"
             style={{ fontFamily: "'Poppins', sans-serif" }}
           >
-            <FontAwesomeIcon icon={faLocationDot} className="text-[10px]" />
-            {i.location ||
-              [i.city, i.state, i.country].filter(Boolean).join(", ")}
+            <FontAwesomeIcon icon={faLocationDot} className="text-[10px] mt-0.5 flex-shrink-0" />
+            <span className="break-words break-all">
+              {i.location ||
+                [i.city, i.state, i.country].filter(Boolean).join(", ")}
+            </span>
           </p>
         </div>
       </div>
 
-      {/* ── Floating badge strip ── */}
-      <div className="absolute -bottom-5 left-6 right-6 flex flex-wrap items-center gap-2 z-10">
+      {/* ── Header badge strip (in-flow, never overflows boundary) ── */}
+      <div className="mt-4 flex flex-wrap items-center gap-2">
         <StatusPill
           adminStatus={i.adminStatus}
           adminReviewed={i.adminReviewed}
@@ -459,7 +632,7 @@ const ViewModalBody = ({ internship: i, onEdit, onClose }) => (
     </div>
 
     {/* ── Scrollable body ── */}
-    <div className="flex-1 min-h-0 overflow-y-auto px-6 pt-10 pb-4 space-y-5 bg-white">
+    <div className="flex-1 min-h-0 overflow-y-auto px-6 pt-5 pb-4 space-y-5 bg-white">
       {/* Rejection reason banner */}
       {(i.adminStatus === "rejected" ||
         (!i.adminStatus && !i.adminApproved && i.adminReviewed)) &&
@@ -714,7 +887,7 @@ const EditModalBody = ({
       updateField("compensationDetails.frequency", "");
     } else {
       if (!si.compensationDetails?.currency)
-        updateField("compensationDetails.currency", "USD");
+        updateField("compensationDetails.currency", "INR");
       if (!si.compensationDetails?.frequency)
         updateField("compensationDetails.frequency", "MONTHLY");
     }
@@ -823,24 +996,45 @@ const EditModalBody = ({
             { label: "Job Title", field: "jobTitle", type: "text" },
             { label: "Company Name", field: "companyName", type: "text" },
             { label: "Location", field: "location", type: "text" },
-          ].map(({ label, field, type }) => (
-            <div key={field}>
-              <label
-                className="block text-xs font-semibold text-gray-600 mb-1"
-                style={{ fontFamily: "'Poppins', sans-serif" }}
-              >
-                {label}
-              </label>
+          ].map(({ label, field, type }) => {
+            const error =
+              field === "jobTitle"
+                ? validateJobTitle(si.jobTitle || "")
+                : field === "companyName"
+                ? validateCompanyName(si.companyName || "")
+                : "";
 
-              <input
-                type={type}
-                value={si[field] || ""}
-                onChange={(e) => updateField(field, e.target.value)}
-                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
-                style={{ fontFamily: "'Poppins', sans-serif" }}
-              />
-            </div>
-          ))}
+            return (
+              <div key={field}>
+                <label
+                  className="block text-xs font-semibold text-gray-600 mb-1"
+                  style={{ fontFamily: "'Poppins', sans-serif" }}
+                >
+                  {label}
+                </label>
+
+                <input
+                  type={type}
+                  value={si[field] || ""}
+                  onChange={(e) => updateField(field, e.target.value)}
+                  maxLength={
+                    field === "jobTitle" || field === "companyName"
+                      ? 100
+                      : undefined
+                  }
+                  className={`w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 ${
+                    error
+                      ? "border-red-500 focus:ring-red-400 bg-red-50/20"
+                      : "border-gray-200 focus:ring-indigo-400"
+                  }`}
+                  style={{ fontFamily: "'Poppins', sans-serif" }}
+                />
+                {error && (
+                  <p className="text-red-500 text-xs mt-1 font-medium">{error}</p>
+                )}
+              </div>
+            );
+          })}
 
           {/* Sector */}
           <div>
@@ -851,18 +1045,17 @@ const EditModalBody = ({
               Sector
             </label>
 
-            <select
+            <CustomSelect
               value={si.sector || ""}
               onChange={(e) => updateField("sector", e.target.value)}
-              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
-              style={{ fontFamily: "'Poppins', sans-serif" }}
-            >
-              {Object.entries(SECTOR_LABELS).map(([val, label]) => (
-                <option key={val} value={val}>
-                  {label}
-                </option>
-              ))}
-            </select>
+              options={Object.entries(SECTOR_LABELS).map(([val, label]) => ({
+                value: val,
+                label,
+              }))}
+              placeholder="Select Sector"
+              className="w-full"
+              buttonClassName="border border-gray-200 rounded-lg px-3 py-2 text-sm h-10"
+            />
           </div>
         </div>
 
@@ -922,16 +1115,18 @@ const EditModalBody = ({
             >
               Mode
             </label>
-            <select
+            <CustomSelect
               value={si.internshipMode || ""}
               onChange={(e) => updateField("internshipMode", e.target.value)}
-              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
-              style={{ fontFamily: "'Poppins', sans-serif" }}
-            >
-              <option value="ONLINE">Online</option>
-              <option value="OFFLINE">Offline</option>
-              <option value="HYBRID">Hybrid</option>
-            </select>
+              options={[
+                { value: "ONLINE", label: "Online" },
+                { value: "OFFLINE", label: "Offline" },
+                { value: "HYBRID", label: "Hybrid" },
+              ]}
+              placeholder="Select Mode"
+              className="w-full"
+              buttonClassName="border border-gray-200 rounded-lg px-3 py-2 text-sm h-10"
+            />
           </div>
           <div>
             <label
@@ -940,17 +1135,19 @@ const EditModalBody = ({
             >
               Classification
             </label>
-            <select
+            <CustomSelect
               value={si.classification || ""}
               onChange={(e) => updateField("classification", e.target.value)}
-              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
-              style={{ fontFamily: "'Poppins', sans-serif" }}
-            >
-              <option value="">Select</option>
-              <option value="Basic">Basic</option>
-              <option value="Intermediate">Intermediate</option>
-              <option value="Advanced">Advanced</option>
-            </select>
+              options={[
+                { value: "", label: "Select" },
+                { value: "Basic", label: "Basic" },
+                { value: "Intermediate", label: "Intermediate" },
+                { value: "Advanced", label: "Advanced" },
+              ]}
+              placeholder="Select Classification"
+              className="w-full"
+              buttonClassName="border border-gray-200 rounded-lg px-3 py-2 text-sm h-10"
+            />
           </div>
           <div>
             <label
@@ -959,16 +1156,18 @@ const EditModalBody = ({
             >
               Type
             </label>
-            <select
+            <CustomSelect
               value={si.internshipType || "FREE"}
               onChange={(e) => handleTypeChange(e.target.value)}
-              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
-              style={{ fontFamily: "'Poppins', sans-serif" }}
-            >
-              <option value="FREE">Free</option>
-              <option value="STIPEND">Stipend</option>
-              <option value="PAID">Paid</option>
-            </select>
+              options={[
+                { value: "FREE", label: "Free" },
+                { value: "STIPEND", label: "Stipend" },
+                { value: "PAID", label: "Paid" },
+              ]}
+              placeholder="Select Type"
+              className="w-full"
+              buttonClassName="border border-gray-200 rounded-lg px-3 py-2 text-sm h-10"
+            />
           </div>
         </div>
 
@@ -1004,20 +1203,18 @@ const EditModalBody = ({
                 >
                   Currency
                 </label>
-                <select
-                  value={si.compensationDetails?.currency || "USD"}
+                <CustomSelect
+                  value={si.compensationDetails?.currency || "INR"}
                   onChange={(e) =>
                     updateField("compensationDetails.currency", e.target.value)
                   }
-                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
-                  style={{ fontFamily: "'Poppins', sans-serif" }}
-                >
-                  {["USD", "CAD", "EUR", "INR", "GBP"].map((c) => (
-                    <option key={c} value={c}>
-                      {c}
-                    </option>
-                  ))}
-                </select>
+                  options={["INR", "USD", "CAD", "EUR", "GBP"].map((c) => ({
+                    value: c,
+                    label: c,
+                  }))}
+                  className="w-full"
+                  buttonClassName="border border-gray-200 rounded-lg px-3 py-2 text-sm h-10"
+                />
               </div>
               <div>
                 <label
@@ -1026,18 +1223,19 @@ const EditModalBody = ({
                 >
                   Frequency
                 </label>
-                <select
+                <CustomSelect
                   value={si.compensationDetails?.frequency || "MONTHLY"}
                   onChange={(e) =>
                     updateField("compensationDetails.frequency", e.target.value)
                   }
-                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
-                  style={{ fontFamily: "'Poppins', sans-serif" }}
-                >
-                  <option value="MONTHLY">Monthly</option>
-                  <option value="WEEKLY">Weekly</option>
-                  <option value="ONE_TIME">One-time</option>
-                </select>
+                  options={[
+                    { value: "MONTHLY", label: "Monthly" },
+                    { value: "WEEKLY", label: "Weekly" },
+                    { value: "ONE_TIME", label: "One-time" },
+                  ]}
+                  className="w-full"
+                  buttonClassName="border border-gray-200 rounded-lg px-3 py-2 text-sm h-10"
+                />
               </div>
             </div>
           </>
@@ -1078,6 +1276,13 @@ const EditModalBody = ({
                 type={type}
                 value={si.contactInfo?.[field.split(".")[1]] || ""}
                 onChange={(e) => updateField(field, e.target.value)}
+                maxLength={
+                  field === "contactInfo.name"
+                    ? 60
+                    : field === "contactInfo.email"
+                    ? 80
+                    : 25
+                }
                 className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
                 style={{ fontFamily: "'Poppins', sans-serif" }}
               />
@@ -1335,6 +1540,42 @@ const YourJobPosts = () => {
   const handleUpdateJob = async () => {
     if (!selectedInternship) return;
 
+    const titleErr = validateJobTitle(selectedInternship.jobTitle || "");
+    if (titleErr) {
+      alert(titleErr);
+      return;
+    }
+    const companyErr = validateCompanyName(selectedInternship.companyName || "");
+    if (companyErr) {
+      alert(companyErr);
+      return;
+    }
+
+    if (selectedInternship.contactInfo?.name) {
+      const cNameErr = validateContactName(selectedInternship.contactInfo.name);
+      if (cNameErr) {
+        alert(cNameErr);
+        return;
+      }
+    }
+    if (selectedInternship.contactInfo?.email) {
+      const cEmailErr = validateEmail(selectedInternship.contactInfo.email);
+      if (cEmailErr) {
+        alert(cEmailErr);
+        return;
+      }
+    }
+    if (selectedInternship.contactInfo?.phone) {
+      const cPhoneErr = validateContactPhone(
+        selectedInternship.contactInfo.phone,
+        selectedInternship.country || "India"
+      );
+      if (cPhoneErr) {
+        alert(cPhoneErr);
+        return;
+      }
+    }
+
     // Send only the editable fields — never let the frontend decide adminApproved/adminStatus.
     // The backend PUT route always resets to "pending" on partner edits.
     const {
@@ -1398,12 +1639,13 @@ const YourJobPosts = () => {
 
   return (
     <div
-      className="p-6 rounded-lg shadow-md min-h-screen"
+      className="bg-white p-4 sm:p-6 rounded-lg shadow-md"
       style={{ fontFamily: "'Poppins', sans-serif" }}
     >
       {/* Search + Sort Row */}
-      <div className="flex flex-col sm:flex-row gap-3 mb-4">
-        <div className="relative flex-1">
+      <div className="flex flex-col xl:flex-row gap-3 mb-4">
+        {/* Search input - full width on mobile/tablets, flex-1 on large desktop */}
+        <div className="relative w-full xl:flex-1">
           <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none">
             <FontAwesomeIcon icon={faMagnifyingGlass} className="text-sm" />
           </span>
@@ -1413,7 +1655,7 @@ const YourJobPosts = () => {
             placeholder="Search by Organization, Role, or Company"
             value={searchQuery}
             onChange={handleSearchChange}
-            className="!mt-0 p-2 pl-9 pr-8 border rounded-lg w-full text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300"
+            className="!mt-0 h-10 p-2 pl-9 pr-8 border border-gray-300 rounded-lg w-full text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300 bg-white text-gray-900"
             style={{ fontFamily: "'Poppins', sans-serif" }}
           />
           {isSearching && (
@@ -1430,52 +1672,59 @@ const YourJobPosts = () => {
             </button>
           )}
         </div>
-        <select
-          value={sortCriteria}
-          onChange={(e) => setSortCriteria(e.target.value)}
-          className="p-2 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300 w-40 flex-shrink-0"
-          style={{ fontFamily: "'Poppins', sans-serif" }}
-        >
-          <option value="jobTitle">Sort by Title</option>
-          <option value="companyName">Sort by Company</option>
-          <option value="createdAt">Sort by Date</option>
-        </select>
-        <button
-          onClick={() =>
-            setSortDirection((d) => (d === "asc" ? "desc" : "asc"))
-          }
-          className="flex items-center gap-1.5 px-3 py-2 border rounded-lg text-sm text-gray-700 hover:bg-gray-100 font-medium w-24 justify-center flex-shrink-0"
-          style={{ fontFamily: "'Poppins', sans-serif" }}
-        >
-          <FontAwesomeIcon
-            icon={sortDirection === "asc" ? faArrowUpAZ : faArrowDownZA}
-            className="text-xs"
-          />
-          {sortDirection === "asc" ? "Asc" : "Desc"}
-        </button>
 
-        {/* Manual refresh button */}
-        <button
-          title="Refresh status"
-          onClick={async () => {
-            setIsRefreshing(true);
-            await fetchInternships(
-              currentPage,
-              committedQuery,
-              sortCriteria,
-              sortDirection,
-            );
-            setIsRefreshing(false);
-          }}
-          className="flex items-center gap-1.5 px-3 py-2 border rounded-lg text-sm text-indigo-600 border-indigo-200 hover:bg-indigo-50 font-medium flex-shrink-0"
-          style={{ fontFamily: "'Poppins', sans-serif" }}
-        >
-          <FontAwesomeIcon
-            icon={faArrowsRotate}
-            className={`text-xs ${isRefreshing ? "animate-spin" : ""}`}
+        {/* Filters + Buttons: stacked on mobile, inline row on tablet & desktop */}
+        <div className="flex flex-col sm:flex-row gap-2.5 w-full xl:w-auto flex-shrink-0">
+          <CustomSelect
+            value={sortCriteria}
+            onChange={(e) => setSortCriteria(e.target.value)}
+            options={[
+              { value: "jobTitle", label: "Sort by Title" },
+              { value: "companyName", label: "Sort by Company" },
+              { value: "createdAt", label: "Sort by Date" },
+            ]}
+            className="w-full sm:w-44 flex-shrink-0"
+            buttonClassName="h-10 px-3 border border-gray-300 rounded-lg text-sm"
           />
-          Refresh
-        </button>
+          <div className="flex gap-2.5 w-full sm:w-auto">
+            <button
+              onClick={() =>
+                setSortDirection((d) => (d === "asc" ? "desc" : "asc"))
+              }
+              className="h-10 flex-1 sm:flex-initial sm:w-24 flex items-center justify-center gap-1.5 px-3 border border-gray-300 rounded-lg text-sm text-gray-700 hover:bg-gray-100 font-medium bg-white transition-colors flex-shrink-0"
+              style={{ fontFamily: "'Poppins', sans-serif" }}
+            >
+              <FontAwesomeIcon
+                icon={sortDirection === "asc" ? faArrowUpAZ : faArrowDownZA}
+                className="text-xs"
+              />
+              {sortDirection === "asc" ? "Asc" : "Desc"}
+            </button>
+
+            {/* Manual refresh button */}
+            <button
+              title="Refresh status"
+              onClick={async () => {
+                setIsRefreshing(true);
+                await fetchInternships(
+                  currentPage,
+                  committedQuery,
+                  sortCriteria,
+                  sortDirection,
+                );
+                setIsRefreshing(false);
+              }}
+              className="h-10 flex-1 sm:flex-initial flex items-center justify-center gap-1.5 px-4 border border-indigo-200 rounded-lg text-sm text-indigo-600 hover:bg-indigo-50 font-medium bg-white transition-colors flex-shrink-0"
+              style={{ fontFamily: "'Poppins', sans-serif" }}
+            >
+              <FontAwesomeIcon
+                icon={faArrowsRotate}
+                className={`text-xs ${isRefreshing ? "animate-spin" : ""}`}
+              />
+              Refresh
+            </button>
+          </div>
+        </div>
       </div>
 
       {/* Result count */}
@@ -1677,12 +1926,12 @@ const YourJobPosts = () => {
         <button
           onClick={() => setCurrentPage((prev) => Math.max(prev - 1, 1))}
           disabled={currentPage === 1 || isSearching || loading} // ✅ also disable during loading
-          className="flex items-center gap-2 px-4 py-2 bg-gray-200 text-gray-700 rounded-lg text-sm font-medium hover:bg-gray-300 disabled:opacity-50 transition"
+          className="flex items-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-2 bg-gray-200 text-gray-700 rounded-lg text-xs sm:text-sm font-medium hover:bg-gray-300 disabled:opacity-50 transition"
         >
           <FontAwesomeIcon icon={faChevronLeft} className="text-xs" />
           Previous
         </button>
-        <span className="text-sm text-gray-600 font-medium min-w-[100px] text-center">
+        <span className="text-xs sm:text-sm text-gray-600 font-medium min-w-[80px] sm:min-w-[100px] text-center">
           {loading ? "" : `Page ${currentPage} of ${totalPages}`}
         </span>
         <button
@@ -1690,7 +1939,7 @@ const YourJobPosts = () => {
             setCurrentPage((prev) => Math.min(prev + 1, totalPages))
           }
           disabled={currentPage === totalPages || isSearching || loading}
-          className="flex items-center gap-2 px-4 py-2 bg-gray-200 text-gray-700 rounded-lg text-sm font-medium hover:bg-gray-300 disabled:opacity-50 transition"
+          className="flex items-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-2 bg-gray-200 text-gray-700 rounded-lg text-xs sm:text-sm font-medium hover:bg-gray-300 disabled:opacity-50 transition"
         >
           Next
           <FontAwesomeIcon icon={faChevronRight} className="text-xs" />
@@ -1708,7 +1957,7 @@ const YourJobPosts = () => {
         overlayClassName="fixed inset-0 bg-black bg-opacity-50 z-[999]"
       >
         <div
-          className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl flex flex-col"
+          className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl flex flex-col overflow-hidden"
           style={{ maxHeight: "90vh", fontFamily: "'Poppins', sans-serif" }}
         >
           {selectedInternship &&

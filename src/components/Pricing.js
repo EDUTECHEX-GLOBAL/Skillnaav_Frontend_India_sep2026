@@ -1,28 +1,35 @@
 import React from "react";
 import Check from "../assets/check.svg";
 import { useSelector } from "react-redux";
-import { useNavigate } from "react-router-dom"; // Import useNavigate
+import { useNavigate } from "react-router-dom";
+import { staticPricingData } from "../data/websiteContentData";
 
 function Pricing() {
-  const navigate = useNavigate(); // Initialize navigate function
+  const navigate = useNavigate();
   const { edutechexData } = useSelector((state) => state.root);
 
-  if (!edutechexData) {
-    return <div>Loading...</div>; // Add loading state if edutechexData is null
-  }
+  const priceheading =
+    edutechexData?.pricing?.[0]?.priceheading || staticPricingData.priceheading;
+  const rawPricingCard =
+    edutechexData?.pricingcard?.length > 0
+      ? edutechexData.pricingcard
+      : staticPricingData.pricingcard;
 
-  const { pricing, pricingcard } = edutechexData;
-
-  if (
-    !pricing ||
-    pricing.length === 0 ||
-    !pricingcard ||
-    pricingcard.length === 0
-  ) {
-    return <div>No pricing data available.</div>;
-  }
-
-  const { priceheading } = pricing[0];
+  const pricingcard = rawPricingCard.map((card, index) => {
+    const staticCard = staticPricingData.pricingcard[index];
+    let subhead = card.plantypesubhead;
+    if (
+      !subhead ||
+      subhead === "Ideal for individual students" ||
+      subhead === "Student Plan"
+    ) {
+      subhead = staticCard?.plantypesubhead || subhead;
+    }
+    return {
+      ...card,
+      plantypesubhead: subhead,
+    };
+  });
 
   const colorClasses = {
     teal: {
@@ -98,21 +105,23 @@ function Pricing() {
               {card.plantype === "Institutional (B2B)" ? (
                 <a href="#contacts">
                   <div
-                    className={`mt-4 bg-white py-3 text-center ${colorClass.text} font-medium rounded ${colorClass.hoverBg} transition`}
+                    className={`mt-4 bg-white py-3 text-center ${colorClass.text} font-medium rounded ${colorClass.hoverBg} transition cursor-pointer`}
                   >
                     Contact Us
                   </div>
                 </a>
               ) : (
                 <button
-                  className={`mt-4 bg-white py-3 ${colorClass.text} font-medium rounded ${colorClass.hoverBg} transition`}
+                  className={`mt-4 bg-white py-3 ${colorClass.text} font-medium rounded ${colorClass.hoverBg} transition cursor-pointer`}
                   onClick={() => {
-                    if (index < 2) {
-                      navigate("/choose-role"); // Navigate for first two buttons
+                    if (card.plantype === "Student (B2C)" || card.pricebtn === "Get Student Plan") {
+                      navigate("/user");
+                    } else {
+                      navigate("/choose-role");
                     }
                   }}
                 >
-                  {card.pricebtn}
+                  {card.pricebtn || "Get Started"}
                 </button>
               )}
             </div>

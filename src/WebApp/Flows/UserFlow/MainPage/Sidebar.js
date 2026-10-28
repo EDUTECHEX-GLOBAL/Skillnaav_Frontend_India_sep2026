@@ -23,29 +23,24 @@ import { userFlowQuestions } from "../../../../components/FeedbackModal/question
 
 const Sidebar = ({ isMobile, isOpen, onClose, isDesktopOpen = true }) => {
   const [showSectors, setShowSectors] = useState(false);
+  const [showAllSectors, setShowAllSectors] = useState(false);
   const { selectedTab, handleSelectTab } = useTabContext();
   const navigate = useNavigate();
   const { openFeedback } = useFeedback();
   const [showLogoutModal, setShowLogoutModal] = useState(false);
 
   const topSectors = [
-    { id: "advanced-ai", name: "Advanced AI & Autonomous Systems" },
-    { id: "quantum-computing", name: "Quantum Computing & Next-Gen Computing" },
-    { id: "climate-tech", name: "Climate Tech & Carbon Capture" },
-    { id: "biotech", name: "Biotechnology & Synthetic Biology" },
-    { id: "materials-science", name: "Advanced Materials Science" },
-    { id: "space-exploration", name: "Space Exploration & Commercial Space" },
-    {
-      id: "neurotechnology",
-      name: "Neurotechnology & Brain-Computer Interfaces",
-    },
-    { id: "precision-agriculture", name: "Precision Agriculture & AgriTech" },
-    {
-      id: "advanced-robotics",
-      name: "Advanced Robotics & Human-Machine Collaboration",
-    },
-    { id: "renewable-energy", name: "Renewable Energy & Grid Innovation" },
-    { id: "architecture-built-environment", name: "Architecture & Built Environment" },
+    { id: "advanced-ai", name: "AI & Autonomous" },
+    { id: "quantum-computing", name: "Quantum Computing" },
+    { id: "climate-tech", name: "Climate Tech" },
+    { id: "biotech", name: "Biotech" },
+    { id: "materials-science", name: "Materials Science" },
+    { id: "space-exploration", name: "Space Exploration" },
+    { id: "neurotechnology", name: "Neurotechnology" },
+    { id: "precision-agriculture", name: "Precision Agriculture" },
+    { id: "advanced-robotics", name: "Advanced Robotics" },
+    { id: "renewable-energy", name: "Renewable Energy" },
+    { id: "architecture-built-environment", name: "Architecture & Built Env" },
   ];
 
   const menuItems = [
@@ -83,10 +78,26 @@ const Sidebar = ({ isMobile, isOpen, onClose, isDesktopOpen = true }) => {
       localStorage.removeItem("studentInfo");
       localStorage.removeItem("userInfo");
       localStorage.removeItem("sessionId");
+      localStorage.removeItem("schoolAdminId");
+      sessionStorage.clear();
     } catch (err) {
       console.warn("LocalStorage clear failed:", err);
     }
-    navigate("/user/login");
+
+    const currentHost = window.location.hostname;
+    const port = window.location.port ? `:${window.location.port}` : "";
+    const protocol = window.location.protocol;
+
+    if (currentHost.startsWith("b2b.localhost")) {
+      window.location.href = `${protocol}//localhost${port}/user`;
+      return;
+    } else if (currentHost.startsWith("b2b.") || currentHost.startsWith("campus.")) {
+      const mainHost = currentHost.replace(/^(b2b|campus)\./, "");
+      window.location.href = `${protocol}//${mainHost}${port}/user`;
+      return;
+    }
+
+    navigate("/user");
   };
 
   const handleLogoutTrigger = async () => {
@@ -158,37 +169,41 @@ const Sidebar = ({ isMobile, isOpen, onClose, isDesktopOpen = true }) => {
       {/* Sidebar panel */}
       <div
         className={`
-          fixed md:sticky top-16
-          h-[calc(100vh-4rem)] bg-white shadow-lg font-poppins
-          z-[100] md:z-10
-          transform transition-all duration-300 ease-in-out
           ${
             isMobile
               ? isOpen
-                ? "translate-x-0 w-64"
-                : "-translate-x-full w-64"
-              : `translate-x-0 ${isDesktopOpen ? "w-64" : "w-14"}`
+                ? "fixed top-[72px] left-0 h-[calc(100vh-72px)] z-[100] w-64 bg-white shadow-xl transform translate-x-0"
+                : "hidden"
+              : `sticky top-[72px] z-10 h-[calc(100vh-72px)] bg-white shadow-lg ${
+                  isDesktopOpen ? "w-64" : "w-16"
+                }`
           }
+          font-poppins transition-all duration-300 ease-in-out
         `}
       >
-        {/* Inner content — always 256px wide; parent clips when collapsed */}
+        {/* Inner content */}
         <div className="w-full h-full flex flex-col">
           {/* Scrollable nav area */}
           <div
-            className={`flex-1 min-h-0 overflow-y-auto pt-4 pb-6 hide-scrollbar ${isDesktopOpen || isMobile ? "px-4" : "px-1"}`}
+            className={`flex-1 min-h-0 overflow-y-auto ${isDesktopOpen || isMobile ? "px-4 pt-4" : "px-1.5 pt-10"} pb-6 hide-scrollbar`}
           >
             <nav className="space-y-2">
               {menuItems.map(({ id, icon, label }) => (
                 <button
                   key={id}
                   onClick={() => handleTabClick(id)}
-                  className={`flex items-center p-3 rounded-lg w-full text-left font-medium transition-colors
+                  title={!isDesktopOpen && !isMobile ? label : ""}
+                  className={`flex items-center rounded-xl transition-all
     ${
       selectedTab === id
         ? "bg-[#F0DEFD] text-[#7520A9]"
         : "text-gray-600 hover:bg-gray-100"
     }
-    ${!isDesktopOpen && !isMobile ? "justify-center" : ""}
+    ${
+      !isDesktopOpen && !isMobile
+        ? "justify-center w-11 h-11 mx-auto p-0"
+        : "p-3 w-full text-left font-medium"
+    }
   `}
                 >
                   <FontAwesomeIcon
@@ -221,17 +236,35 @@ const Sidebar = ({ isMobile, isOpen, onClose, isDesktopOpen = true }) => {
                   </button>
 
                   {showSectors && (
-                    <ul className="pl-8 mt-2 space-y-1">
-                      {topSectors.map((sector, index) => (
-                        <li
-                          key={index}
-                          className="text-sm text-gray-600 hover:text-[#7520A9] cursor-pointer"
-                          onClick={() => handleTabClick(sector.id)}
+                    <div className="mt-1">
+                      <div className="divide-y divide-gray-100">
+                        {(showAllSectors ? topSectors : topSectors.slice(0, 5)).map(
+                          (sector) => (
+                            <button
+                              key={sector.id}
+                              type="button"
+                              onClick={() => handleTabClick(sector.id)}
+                              className={`w-full text-left py-2.5 px-3 text-xs sm:text-[13px] transition-colors rounded-md ${
+                                selectedTab === sector.id
+                                  ? "bg-[#F0DEFD] text-[#7520A9] font-semibold"
+                                  : "text-gray-700 hover:bg-gray-50 hover:text-gray-900"
+                              }`}
+                            >
+                              {sector.name}
+                            </button>
+                          )
+                        )}
+                      </div>
+                      <div className="pt-2 px-1 pb-1">
+                        <button
+                          type="button"
+                          onClick={() => setShowAllSectors(!showAllSectors)}
+                          className="w-full py-1.5 px-4 text-xs font-medium text-gray-600 hover:text-gray-900 bg-white hover:bg-gray-50 border border-gray-200 rounded-full transition-colors text-center"
                         >
-                          • {sector.name}
-                        </li>
-                      ))}
-                    </ul>
+                          {showAllSectors ? "Show less" : "Show all sectors"}
+                        </button>
+                      </div>
+                    </div>
                   )}
                 </div>
               )}

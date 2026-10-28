@@ -1,15 +1,27 @@
 // File: UserCreateAccount.js
 
 import React, { useState, useEffect, useRef } from "react";
-import { useNavigate, Link } from "react-router-dom";
+import { useNavigate, useLocation, Link } from "react-router-dom";
 import axios from "../../../../api/axiosInstance";
 import { EyeIcon, EyeSlashIcon } from "@heroicons/react/24/solid";
 import DatePicker from "react-datepicker";
 import "react-datepicker/dist/react-datepicker.css";
 import loginImage from "../../../../assets-webapp/login-image-edutechex.png";
 import { GoogleLogin } from "@react-oauth/google";
-import { IN_STATES } from "../../../../constants/locations";
+import { useGoogleButtonWidth } from "../../../../hooks/useGoogleButtonWidth";
+import {
+  COUNTRY_OPTIONS,
+  getStateList,
+  getStateLabel,
+  getZipLabel,
+  getZipPlaceholder,
+  isValidPostalCode,
+  getPostalCodeError,
+  isValidCity,
+  getCityError,
+} from "../../../../constants/locations";
 import UserAgeGateConsent from "./UserProfileBuilding/UserAgeGateConsent";
+import { validateEmail, validateName } from "../../../../utils/validators";
 
 
 // ---------------------------------------------------------------------------
@@ -28,12 +40,16 @@ const clearRegistrationSession = () => {
 
 const UnifiedUserRegistration = () => {
   const navigate = useNavigate();
+  const location = useLocation();
 
   // Initialise step from sessionStorage so a refresh lands on the right screen
   const [currentStep, setCurrentStep] = useState(() => {
     const saved = sessionStorage.getItem(SESSION_KEY_STEP);
     return saved ? parseFloat(saved) : 1;
   });
+
+  const { containerRef: googleBtnRef, buttonWidth: googleBtnWidth } =
+    useGoogleButtonWidth(384);
 
   const [errorMessage, setErrorMessage]           = useState("");
   const [otp, setOtp]                             = useState("");
@@ -58,8 +74,9 @@ const UnifiedUserRegistration = () => {
   // --- UNIFIED FORM STATE ---
   // Restore non-sensitive fields from sessionStorage when the page is refreshed
   const [formData, setFormData] = useState(() => {
+    const passedEmail = location.state?.email || "";
     const defaults = {
-      name: "", email: "", password: "", confirmPassword: "",
+      name: "", email: passedEmail, password: "", confirmPassword: "",
       institutionName: "", dob: null, educationLevel: "", grade: "", fieldOfStudy: "",
       country: "", state: "", city: "", zip: "", address: "",
       desiredField: "", linkedin: "", portfolio: "", skills: "", interests: "",
@@ -72,6 +89,7 @@ const UnifiedUserRegistration = () => {
       return {
         ...defaults,
         ...parsed,
+        email: parsed.email || passedEmail,
         // dob is serialised as an ISO string — restore to Date object
         dob: parsed.dob ? new Date(parsed.dob) : null,
         // File objects cannot be serialised — always reset
@@ -84,6 +102,13 @@ const UnifiedUserRegistration = () => {
       return defaults;
     }
   });
+
+  // Also update if location.state.email arrives or changes
+  useEffect(() => {
+    if (location.state?.email && !formData.email) {
+      setFormData((prev) => ({ ...prev, email: location.state.email }));
+    }
+  }, [location.state?.email]);
 
   // --- PERSIST step + formData to sessionStorage on every change ---
   // This is what makes refresh-resume work.
@@ -285,8 +310,14 @@ const UnifiedUserRegistration = () => {
       setErrorMessage("Please fill all required fields.");
       return false;
     }
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-      setErrorMessage("Invalid email format.");
+    const nameErr = validateName(name);
+    if (nameErr) {
+      setErrorMessage(nameErr);
+      return false;
+    }
+    const emailErr = validateEmail(email);
+    if (emailErr) {
+      setErrorMessage(emailErr);
       return false;
     }
     // Password strength: min 8 chars, 1 uppercase, 1 lowercase, 1 digit, 1 special char
@@ -410,7 +441,9 @@ const UnifiedUserRegistration = () => {
       setErrorMessage("");
     } catch (err) {
       console.error("Consent save failed:", err);
-      setErrorMessage("Failed to save consent. Please try again.");
+      const serverMsg = err?.response?.data?.message || err?.message;
+      setErrorMessage(serverMsg || "Failed to save consent. Please try again.");
+      throw err;
     } finally {
       setSavingConsent(false);
     }
@@ -444,6 +477,9 @@ const UnifiedUserRegistration = () => {
       address,
     } = formData;
 
+    const isCityValid = isValidCity(city);
+    const isZipValid = isValidPostalCode(zip, country);
+
     // High school → grade required
     if (educationLevel === "highschool") {
       return Boolean(
@@ -452,7 +488,9 @@ const UnifiedUserRegistration = () => {
         country &&
         state &&
         city &&
+        isCityValid &&
         zip &&
+        isZipValid &&
         address
       );
     }
@@ -464,17 +502,25 @@ const UnifiedUserRegistration = () => {
       country &&
       state &&
       city &&
+      isCityValid &&
       zip &&
+      isZipValid &&
       address
     );
   };
 
-
-
   const handleStep2Submit = (e) => {
     e.preventDefault(); // Stop form default submission
     if (!validateStep2()) {
-      setErrorMessage("Please fill all required fields for your profile.");
+      if (formData.city && !isValidCity(formData.city)) {
+        setErrorMessage(getCityError(formData.city));
+        return;
+      }
+      if (formData.zip && !isValidPostalCode(formData.zip, formData.country)) {
+        setErrorMessage(getPostalCodeError(formData.zip, formData.country));
+        return;
+      }
+      setErrorMessage("Please fill all required fields correctly.");
       return;
     }
     setErrorMessage("");
@@ -490,12 +536,29 @@ const UnifiedUserRegistration = () => {
 
   const validateStep3 = () => {
     // Only validate the fields introduced in Step 3 that are REQUIRED
-    const { desiredField, linkedin, profilePic } = formData;
-    return Boolean(desiredField && linkedin && profilePic);
+    const { desiredField, linkedin, profilePic, portfolio } = formData;
+    const urlRegex = /^(https?:\/\/)?([a-zA-Z0-9-]+\.)+[a-zA-Z]{2,}(:\d+)?(\/[^\s]*)?$/i;
+    const linkedinRegex = /^(https?:\/\/)?((www|\w\w)\.)?linkedin\.com\/[^\s]+$/i;
+
+    const isLinkedinValid = Boolean(linkedin && linkedinRegex.test(linkedin.trim()));
+    const isPortfolioValid = !portfolio || urlRegex.test(portfolio.trim());
+
+    return Boolean(desiredField && isLinkedinValid && isPortfolioValid && profilePic);
   };
 
   const handleStep3Submit = async () => {
+    const urlRegex = /^(https?:\/\/)?([a-zA-Z0-9-]+\.)+[a-zA-Z]{2,}(:\d+)?(\/[^\s]*)?$/i;
+    const linkedinRegex = /^(https?:\/\/)?((www|\w\w)\.)?linkedin\.com\/[^\s]+$/i;
+
     if (!validateStep3()) {
+      if (!formData.linkedin || !linkedinRegex.test(formData.linkedin.trim())) {
+        setErrorMessage("Please enter a valid LinkedIn link (e.g. https://linkedin.com/in/username).");
+        return;
+      }
+      if (formData.portfolio && !urlRegex.test(formData.portfolio.trim())) {
+        setErrorMessage("Please enter a valid Portfolio link (e.g. https://yourportfolio.com).");
+        return;
+      }
       setErrorMessage("Please fill the required fields.");
       return;
     }
@@ -508,6 +571,20 @@ const UnifiedUserRegistration = () => {
 
         // 🔐 Skip auth-only fields
         if (key === "password" || key === "confirmPassword") return;
+
+        // Normalize links
+        if (key === "linkedin") {
+          const lk = value ? String(value).trim() : "";
+          fd.append("linkedin", /^https?:\/\//i.test(lk) ? lk : `https://${lk}`);
+          return;
+        }
+        if (key === "portfolio") {
+          const pf = value ? String(value).trim() : "";
+          if (pf) {
+            fd.append("portfolio", /^https?:\/\//i.test(pf) ? pf : `https://${pf}`);
+          }
+          return;
+        }
 
         // ✅ FIX 1: institutionName → universityName
         if (key === "institutionName") {
@@ -576,26 +653,10 @@ const UnifiedUserRegistration = () => {
 
 
   // --- Location/City Logic (from UserProfileForm.js) ---
-  const stateList =
-    formData.country === "India"
-      ? IN_STATES
-      : formData.country === "India"
-        ? IN_STATES
-        : [];
-
-  const stateLabel =
-    formData.country === "India"
-      ? "Province / Territory"
-      : formData.country === "India"
-        ? "State"
-        : "State / Province";
-
-  const zipLabel =
-    formData.country === "India"
-      ? "Postal Code"
-      : formData.country === "India"
-        ? "ZIP Code"
-        : "ZIP / Postal Code";
+  const stateList = getStateList(formData.country);
+  const stateLabel = getStateLabel(formData.country);
+  const zipLabel = getZipLabel(formData.country);
+  const zipPlaceholder = getZipPlaceholder(formData.country);
 
   const handleCountryChange = (value) => {
     // Reset state & city when country changes
@@ -660,21 +721,53 @@ const UnifiedUserRegistration = () => {
           <h1 className="text-2xl font-semibold mb-6 text-center">Create an account</h1>
           {/* Account Form */}
           <div className="mb-4">
-            <input type="text" name="name" placeholder="Full Name" value={formData.name} onChange={handleChange} className="w-full p-3 border border-gray-300 rounded-lg" />
+            <input type="text" name="name" placeholder="Full Name" value={formData.name} onChange={handleChange} maxLength={50} className="w-full p-3 border border-gray-300 rounded-lg" />
           </div>
           <div className="mb-4">
             <input type="email" name="email" placeholder="Gmail Address" value={formData.email} onChange={handleChange} className="w-full p-3 border border-gray-300 rounded-lg" />
           </div>
-          <div className="mb-4 relative">
-            <input type={showPassword ? "text" : "password"} name="password" placeholder="Password" value={formData.password} onChange={handleChange} className="w-full p-3 border border-gray-300 rounded-lg" />
-            <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute right-3 top-3">
-              {showPassword ? (<EyeIcon className="h-5 w-5 mt-4 text-gray-500" />) : (<EyeSlashIcon className="h-5 w-5 mt-4 text-gray-500" />)}
+          <div className="mb-4 relative flex items-center">
+            <input
+              type={showPassword ? "text" : "password"}
+              name="password"
+              placeholder="Password"
+              value={formData.password}
+              onChange={handleChange}
+              className="w-full !mt-0 p-3 pr-11 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-400"
+            />
+            <button
+              type="button"
+              onClick={() => setShowPassword(!showPassword)}
+              className="absolute right-3 top-1/2 -translate-y-1/2 flex items-center justify-center text-gray-500 hover:text-gray-700 focus:outline-none cursor-pointer"
+              aria-label={showPassword ? "Hide password" : "Show password"}
+            >
+              {showPassword ? (
+                <EyeIcon className="h-5 w-5" />
+              ) : (
+                <EyeSlashIcon className="h-5 w-5" />
+              )}
             </button>
           </div>
-          <div className="mb-4 relative">
-            <input type={showConfirmPassword ? "text" : "password"} name="confirmPassword" placeholder="Confirm Password" value={formData.confirmPassword} onChange={handleChange} className="w-full p-3 border border-gray-300 rounded-lg" />
-            <button type="button" onClick={() => setShowConfirmPassword(!showConfirmPassword)} className="absolute right-3 top-3">
-              {showConfirmPassword ? (<EyeIcon className="h-5 w-5 mt-4 text-gray-500" />) : (<EyeSlashIcon className="h-5 w-5 mt-4 text-gray-500" />)}
+          <div className="mb-4 relative flex items-center">
+            <input
+              type={showConfirmPassword ? "text" : "password"}
+              name="confirmPassword"
+              placeholder="Confirm Password"
+              value={formData.confirmPassword}
+              onChange={handleChange}
+              className="w-full !mt-0 p-3 pr-11 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-400"
+            />
+            <button
+              type="button"
+              onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+              className="absolute right-3 top-1/2 -translate-y-1/2 flex items-center justify-center text-gray-500 hover:text-gray-700 focus:outline-none cursor-pointer"
+              aria-label={showConfirmPassword ? "Hide confirm password" : "Show confirm password"}
+            >
+              {showConfirmPassword ? (
+                <EyeIcon className="h-5 w-5" />
+              ) : (
+                <EyeSlashIcon className="h-5 w-5" />
+              )}
             </button>
           </div>
           <button type="button" onClick={handleStep1Submit} className="w-full bg-purple-500 text-white p-3 rounded-lg hover:bg-purple-600 mb-4">
@@ -861,12 +954,14 @@ const UnifiedUserRegistration = () => {
                 <h2 className="text-lg font-bold text-gray-700">LOCATION</h2>
               </div>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4 overflow-visible">
-                {/* Country (US/CA only) */}
+                {/* Country */}
                 <div>
                   <label className="block text-sm font-medium text-gray-700">Country *</label>
                   <select name="country" value={formData.country} onChange={(e) => handleCountryChange(e.target.value)} className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-purple-500 focus:border-purple-500" required>
-                    <option value="">Select</option>
-                    <option value="India">India</option>
+                    <option value="">Select Country</option>
+                    {COUNTRY_OPTIONS.map((c) => (
+                      <option key={c} value={c}>{c}</option>
+                    ))}
                   </select>
                 </div>
                 {/* State / Province */}
@@ -880,25 +975,62 @@ const UnifiedUserRegistration = () => {
                 {/* City with suggestions */}
                 <div className="relative">
                   <label className="block text-sm font-medium text-gray-700">City *</label>
-                  <input type="text" name="city" value={formData.city} onChange={handleCityInputChange} className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-purple-500 focus:border-purple-500 disabled:bg-gray-100" disabled={!formData.country} placeholder="Start typing city" autoComplete="off" required />
-               {citySuggestions.length > 0 && (
-  <ul className="absolute z-[9999] left-0 top-full w-full bg-white border border-gray-300 rounded-md shadow-xl mt-1 max-h-48 overflow-y-auto">
-    {citySuggestions.map((c) => (
-      <li
-        key={`${c.city}-${c.state}`}
-        onClick={() => handleCitySelect(c)}
-        className="cursor-pointer px-4 py-2 hover:bg-purple-100"
-      >
-        {c.city}, {c.state}
-      </li>
-    ))}
-  </ul>
-)}
+                  <input
+                    type="text"
+                    name="city"
+                    value={formData.city}
+                    onChange={handleCityInputChange}
+                    className={`mt-1 block w-full px-3 py-2 border rounded-md shadow-sm focus:outline-none focus:ring-purple-500 focus:border-purple-500 disabled:bg-gray-100 ${
+                      formData.city && !isValidCity(formData.city)
+                        ? "border-red-500 bg-red-50/40 text-red-900"
+                        : "border-gray-300"
+                    }`}
+                    disabled={!formData.country}
+                    placeholder="Start typing city"
+                    autoComplete="off"
+                    required
+                  />
+                  {formData.city && !isValidCity(formData.city) && (
+                    <p className="text-xs text-red-600 mt-1 font-medium flex items-center gap-1">
+                      <span>⚠️</span> {getCityError(formData.city)}
+                    </p>
+                  )}
+                  {citySuggestions.length > 0 && (
+                    <ul className="absolute z-[9999] left-0 top-full w-full bg-white border border-gray-300 rounded-md shadow-xl mt-1 max-h-48 overflow-y-auto">
+                      {citySuggestions.map((c) => (
+                        <li
+                          key={`${c.city}-${c.state}`}
+                          onClick={() => handleCitySelect(c)}
+                          className="cursor-pointer px-4 py-2 hover:bg-purple-100"
+                        >
+                          {c.city}, {c.state}
+                        </li>
+                      ))}
+                    </ul>
+                  )}
                 </div>
                 {/* ZIP / Postal Code */}
                 <div>
                   <label className="block text-sm font-medium text-gray-700">{zipLabel} *</label>
-                  <input type="text" name="zip" value={formData.zip} onChange={handleChange} className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-purple-500 focus:border-purple-500" placeholder={formData.country === "India" ? "e.g., K1A 0B1" : "e.g., 94105"} autoComplete="postal-code" required />
+                  <input
+                    type="text"
+                    name="zip"
+                    value={formData.zip}
+                    onChange={handleChange}
+                    className={`mt-1 block w-full px-3 py-2 border rounded-md shadow-sm focus:outline-none focus:ring-purple-500 focus:border-purple-500 ${
+                      formData.zip && !isValidPostalCode(formData.zip, formData.country)
+                        ? "border-red-500 bg-red-50/40 text-red-900"
+                        : "border-gray-300"
+                    }`}
+                    placeholder={zipPlaceholder}
+                    autoComplete="postal-code"
+                    required
+                  />
+                  {formData.zip && !isValidPostalCode(formData.zip, formData.country) && (
+                    <p className="text-xs text-red-600 mt-1 font-medium flex items-center gap-1">
+                      <span>⚠️</span> {getPostalCodeError(formData.zip, formData.country)}
+                    </p>
+                  )}
                 </div>
                 {/* Full Address */}
                 <div className="md:col-span-2 md:col-start-1">
@@ -969,12 +1101,43 @@ const UnifiedUserRegistration = () => {
               {/* LinkedIn Profile Input */}
               <div>
                 <label htmlFor="linkedin" className="block text-sm font-medium text-gray-700">LinkedIn Profile *</label>
-                <input id="linkedin" type="text" name="linkedin" value={formData.linkedin} onChange={handleChange} required className="mt-2 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-purple-500 focus:border-purple-500" placeholder="Enter your LinkedIn profile" />
+                <input
+                  id="linkedin"
+                  type="url"
+                  name="linkedin"
+                  value={formData.linkedin}
+                  onChange={handleChange}
+                  required
+                  className={`mt-2 block w-full px-3 py-2 border rounded-md shadow-sm focus:outline-none focus:ring-purple-500 focus:border-purple-500 ${
+                    formData.linkedin && !/^(https?:\/\/)?((www|\w\w)\.)?linkedin\.com\/[^\s]+$/i.test(formData.linkedin.trim())
+                      ? "border-red-500 bg-red-50/40 text-red-900"
+                      : "border-gray-300"
+                  }`}
+                  placeholder="https://linkedin.com/in/username"
+                />
+                {formData.linkedin && !/^(https?:\/\/)?((www|\w\w)\.)?linkedin\.com\/[^\s]+$/i.test(formData.linkedin.trim()) && (
+                  <p className="text-xs text-red-600 mt-1 font-medium">⚠️ Please enter a valid LinkedIn link (e.g. https://linkedin.com/in/username)</p>
+                )}
               </div>
               {/* Portfolio Website Input (Optional) */}
               <div>
                 <label htmlFor="portfolio" className="block text-sm font-medium text-gray-700">Portfolio Website (Optional)</label>
-                <input id="portfolio" type="text" name="portfolio" value={formData.portfolio} onChange={handleChange} className="mt-2 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-purple-500 focus:border-purple-500" placeholder="Enter your Portfolio URL" />
+                <input
+                  id="portfolio"
+                  type="url"
+                  name="portfolio"
+                  value={formData.portfolio}
+                  onChange={handleChange}
+                  className={`mt-2 block w-full px-3 py-2 border rounded-md shadow-sm focus:outline-none focus:ring-purple-500 focus:border-purple-500 ${
+                    formData.portfolio && !/^(https?:\/\/)?([a-zA-Z0-9-]+\.)+[a-zA-Z]{2,}(:\d+)?(\/[^\s]*)?$/i.test(formData.portfolio.trim())
+                      ? "border-red-500 bg-red-50/40 text-red-900"
+                      : "border-gray-300"
+                  }`}
+                  placeholder="https://yourportfolio.com"
+                />
+                {formData.portfolio && !/^(https?:\/\/)?([a-zA-Z0-9-]+\.)+[a-zA-Z]{2,}(:\d+)?(\/[^\s]*)?$/i.test(formData.portfolio.trim()) && (
+                  <p className="text-xs text-red-600 mt-1 font-medium">⚠️ Please enter a valid URL link (e.g. https://yourportfolio.com)</p>
+                )}
               </div>
               {/* Skills Input */}
               <div>
@@ -1015,7 +1178,7 @@ const UnifiedUserRegistration = () => {
   };
 
   return (
-    <div className="flex flex-col lg:flex-row min-h-screen font-poppins bg-gray-100 lg:bg-white">
+    <div className="flex flex-col lg:flex-row min-h-screen font-poppins">
 
       {/* ✅ Full-screen resume spinner — shown while we check for an incomplete registration */}
       {resuming && (
@@ -1025,19 +1188,19 @@ const UnifiedUserRegistration = () => {
         </div>
       )}
 
-      {/* Side Image (only visible on step 1/1.5) */}
+      {/* Side Image (only visible on step 1/1.5) - Hidden on mobile/tablet, full height on desktop like revamp */}
       {(currentStep === 1 || currentStep === 1.5) && (
-        <div className="hidden lg:flex lg:w-1/2 items-center justify-center bg-purple-50">
+        <div className="hidden lg:flex lg:w-1/2 items-center justify-center">
           <img
             src={loginImage}
-            alt="Edutechex Login Illustration"
-            className="w-full h-full object-cover rounded-lg"
+            alt="Edutechex Registration Illustration"
+            className="w-full h-full object-cover"
           />
         </div>
       )}
 
-      <div className="flex flex-col items-center justify-center p-8 w-full lg:w-1/2 bg-white mx-auto">
-        <div className={`w-full max-w-md ${currentStep !== 1 && currentStep !== 1.5 ? 'max-w-xl' : ''} flex flex-col justify-center min-h-screen lg:min-h-full`}>
+      <div className={`flex flex-col items-center justify-center px-4 py-8 sm:p-8 w-full ${(currentStep === 1 || currentStep === 1.5) ? 'lg:w-1/2' : ''} bg-white mx-auto`}>
+        <div className={`w-full max-w-md ${(currentStep !== 1 && currentStep !== 1.5) ? 'lg:max-w-2xl' : ''} flex flex-col justify-center my-auto py-4`}>
 
           {errorMessage && (
             <div className="mb-4 p-4 bg-red-100 text-red-800 border border-red-400 rounded">
@@ -1056,8 +1219,19 @@ const UnifiedUserRegistration = () => {
 
           {(currentStep === 1 || currentStep === 1.5) && (
             <>
-              <GoogleLogin
-                onSuccess={async (credentialResponse) => {
+              <div className="flex items-center my-6">
+                <hr className="w-full border-gray-300" />
+                <span className="px-3 text-gray-500 text-sm">OR</span>
+                <hr className="w-full border-gray-300" />
+              </div>
+
+              <div ref={googleBtnRef} className="google-login-wrapper w-full">
+                <GoogleLogin
+                  size="large"
+                  text="signup_with"
+                  shape="rectangular"
+                  width={googleBtnWidth}
+                  onSuccess={async (credentialResponse) => {
                   try {
                     const idToken = credentialResponse.credential;
 
@@ -1087,11 +1261,11 @@ const UnifiedUserRegistration = () => {
                   }
                 }}
               />
+              </div>
 
-
-              <p className="text-center text-gray-500 font-medium text-base">
+              <p className="text-center text-gray-500 font-medium text-base mt-6">
                 Already have an account?{" "}
-                <Link to="/user/login" className="text-blue-500 hover:underline">
+                <Link to="/user/login" className="text-blue-500 hover:underline font-semibold">
                   Login
                 </Link>
               </p>

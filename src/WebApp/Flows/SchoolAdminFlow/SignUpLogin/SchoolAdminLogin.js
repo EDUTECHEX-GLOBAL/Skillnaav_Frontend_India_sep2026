@@ -5,6 +5,8 @@ import classroomImg from "../../../../assets-webapp/school-dashboard.png";
 import SchoolAdminForgotPassword from "./SchoolAdminForgotPassword";
 import { GoogleLogin } from "@react-oauth/google";
 import axios from "../../../../api/axiosInstance";
+import { useGoogleButtonWidth } from "../../../../hooks/useGoogleButtonWidth";
+import { validateEmail } from "../../../../utils/validators";
 
 const SchoolAdminLogin = () => {
   const [credentials, setCredentials] = useState({ email: "", password: "" });
@@ -13,6 +15,8 @@ const SchoolAdminLogin = () => {
   const [errorMessage, setErrorMessage] = useState("");
   const [showForgotModal, setShowForgotModal] = useState(false);
   const navigate = useNavigate();
+  const { containerRef: googleBtnRef, buttonWidth: googleBtnWidth } =
+    useGoogleButtonWidth(384);
 
   const handleChange = (e) => {
     setCredentials({ ...credentials, [e.target.name]: e.target.value });
@@ -24,6 +28,12 @@ const SchoolAdminLogin = () => {
 
     if (!credentials.email || !credentials.password) {
       setErrorMessage("Please enter both email and password.");
+      return;
+    }
+
+    const emailErr = validateEmail(credentials.email);
+    if (emailErr) {
+      setErrorMessage(emailErr);
       return;
     }
 
@@ -65,10 +75,10 @@ const SchoolAdminLogin = () => {
         />
       </div>
 
-      <div className="w-full md:w-1/2 flex items-center justify-center bg-white p-8">
+      <div className="w-full md:w-1/2 flex items-center justify-center bg-white px-4 py-8 sm:p-8">
         <form
           onSubmit={handleLogin}
-          className="w-full max-w-md bg-white p-8 rounded-2xl shadow-lg border border-gray-100"
+          className="w-full max-w-md bg-white p-6 sm:p-8 rounded-2xl shadow-lg border border-gray-100 my-auto"
         >
           <h2 className="text-3xl font-bold text-center mb-6 text-blue-700">
             School Admin Login
@@ -84,25 +94,25 @@ const SchoolAdminLogin = () => {
             type="email"
             name="email"
             placeholder="Email"
-            className="w-full mb-4 p-3 border border-gray-300 rounded-md outline-none focus:ring-2 focus:ring-blue-500"
+            className="w-full !mt-0 mb-4 p-3 border border-gray-300 rounded-md outline-none focus:ring-2 focus:ring-blue-500"
             onChange={handleChange}
             required
           />
 
-          <div className="relative mb-6">
+          <div className="relative flex items-center mb-6">
             <input
               type={showPassword ? "text" : "password"}
               name="password"
               placeholder="Password"
-              className="w-full p-3 border border-gray-300 rounded-md pr-10 outline-none focus:ring-2 focus:ring-blue-500"
+              className="w-full !mt-0 p-3 border border-gray-300 rounded-md pr-10 outline-none focus:ring-2 focus:ring-blue-500"
               onChange={handleChange}
               required
             />
-            {/*Remove "-translate-y-1/2" for eye icon alignment - 05-08-2026*/}
             <button
               type="button"
-              className="absolute top-1/2 right-3 text-gray-500"
+              className="absolute right-3 top-1/2 -translate-y-1/2 flex items-center justify-center text-gray-500 hover:text-gray-700 cursor-pointer focus:outline-none"
               onClick={() => setShowPassword(!showPassword)}
+              aria-label={showPassword ? "Hide password" : "Show password"}
             >
               {showPassword ? <FiEyeOff size={20} /> : <FiEye size={20} />}
             </button>
@@ -132,10 +142,12 @@ const SchoolAdminLogin = () => {
             <hr className="w-full border-gray-300" />
           </div>
 
-          <div className="flex justify-center mb-4">
+          <div ref={googleBtnRef} className="google-login-wrapper w-full mb-4">
             <GoogleLogin
-              width="400"
+              width={googleBtnWidth}
               size="large"
+              shape="rectangular"
+              text="signin_with"
               onSuccess={async (credentialResponse) => {
                 try {
                   const idToken = credentialResponse.credential;

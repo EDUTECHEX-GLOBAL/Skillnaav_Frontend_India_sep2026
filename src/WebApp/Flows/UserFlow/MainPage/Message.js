@@ -16,9 +16,9 @@ const ChatInterface = () => {
   };
 
   return (
-    <div className="flex h-screen bg-gray-100 font-poppins">
+    <div className="flex flex-col md:flex-row h-full min-h-[550px] bg-gray-100 font-poppins rounded-xl overflow-hidden shadow-sm">
       {/* Sidebar */}
-      <div className="w-1/4 border-r border-gray-300 bg-white p-4">
+      <div className="w-full md:w-1/3 lg:w-1/4 border-b md:border-b-0 md:border-r border-gray-300 bg-white p-4">
         {/* Sidebar Header */}
         <div className="mb-4">
           <div className="flex items-center mb-4 cursor-pointer hover:bg-gray-50 p-2 rounded-lg">
@@ -56,7 +56,7 @@ const ChatInterface = () => {
       </div>
 
       {/* Chat Content */}
-      <div className="w-3/4 flex flex-col">
+      <div className="w-full md:w-3/4 flex flex-col">
         {/* Messages */}
         <div className="flex flex-col space-y-4 overflow-y-auto flex-grow bg-gray-50 p-4 rounded-lg shadow-lg">
           <div className="flex items-start space-x-3">
@@ -100,8 +100,8 @@ const ChatInterface = () => {
 
         {/* File Upload Modal */}
         {isModalOpen && (
-          <div className="fixed inset-0 flex items-center justify-center bg-black bg-opacity-50">
-            <div className="bg-white p-6 rounded-lg shadow-lg w-80">
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black bg-opacity-50">
+            <div className="bg-white p-6 rounded-lg shadow-lg w-full max-w-xs">
               <div className="flex flex-col items-center bg-gray-100 rounded-lg p-6">
                 <FaFileAlt className="text-purple-600 mb-4" size={40} />
                 <label className="text-purple-600 cursor-pointer mb-4">

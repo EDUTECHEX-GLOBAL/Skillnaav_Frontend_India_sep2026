@@ -11,11 +11,51 @@ import { faEye, faEyeSlash } from "@fortawesome/free-solid-svg-icons";
 import ForgotPasswordModal from "../SignUpLogin/UserforgotPassword";
 import { GoogleLogin } from "@react-oauth/google";
 import axios from "../../../../api/axiosInstance";
+import { validateEmail } from "../../../../utils/validators";
+import { useGoogleButtonWidth } from "../../../../hooks/useGoogleButtonWidth";
 
 const validationSchema = Yup.object({
-  email: Yup.string().email("Invalid email address").required("Required"),
-  password: Yup.string().required("Required"),
+  email: Yup.string()
+    .required("Email is required.")
+    .test("valid-email", function (value) {
+      const err = validateEmail(value);
+      if (err) return this.createError({ message: err });
+      return true;
+    }),
+  password: Yup.string().required("Password is required."),
 });
+
+const redirectToAppropriateDashboard = (isB2BStudent, navigate, token, sessionId, studentData) => {
+  const currentHost = window.location.hostname;
+  const port = window.location.port ? `:${window.location.port}` : "";
+  const protocol = window.location.protocol;
+
+  const authQueryParams = token
+    ? `?authToken=${encodeURIComponent(token)}${sessionId ? `&authSession=${encodeURIComponent(sessionId)}` : ""}${studentData ? `&studentData=${encodeURIComponent(JSON.stringify(studentData))}` : ""}`
+    : "";
+
+  if (isB2BStudent) {
+    if (currentHost === "localhost" || currentHost === "127.0.0.1") {
+      window.location.href = `${protocol}//b2b.localhost${port}/user-main-page${authQueryParams}`;
+      return;
+    } else if (!currentHost.startsWith("b2b.") && !currentHost.startsWith("campus.")) {
+      const b2bHost = currentHost.replace(/^www\./, "");
+      window.location.href = `${protocol}//b2b.${b2bHost}${port}/user-main-page${authQueryParams}`;
+      return;
+    }
+  } else {
+    if (currentHost.startsWith("b2b.localhost")) {
+      window.location.href = `${protocol}//localhost${port}/user-main-page${authQueryParams}`;
+      return;
+    } else if (currentHost.startsWith("b2b.") || currentHost.startsWith("campus.")) {
+      const mainHost = currentHost.replace(/^(b2b|campus)\./, "");
+      window.location.href = `${protocol}//${mainHost}${port}/user-main-page${authQueryParams}`;
+      return;
+    }
+  }
+
+  navigate("/user-main-page");
+};
 
 const UserLogin = () => {
   const navigate = useNavigate();
@@ -23,6 +63,8 @@ const UserLogin = () => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const { containerRef: googleBtnRef, buttonWidth: googleBtnWidth } =
+    useGoogleButtonWidth(384);
 
   const handleSubmit = async (values, { setSubmitting }) => {
     setError("");
@@ -46,20 +88,29 @@ const UserLogin = () => {
       localStorage.removeItem("sessionId");
       localStorage.setItem("userToken", data.token);
 
-      localStorage.setItem("studentInfo", JSON.stringify({
+      const schoolAdminId = data.schoolAdmin || data.schoolAdminId || null;
+      const schoolName = data.schoolName || data.school || null;
+
+      const studentInfoData = {
         _id: data._id,
         name: data.name,
         email: data.email,
         profileImage: data.profileImage,
         isPremium: data.isPremium,
         planType: data.planType,
-        premiumExpiration: data.premiumExpiration ?? null, // ✅ FIX: was missing — Navbar reads this from localStorage on load
+        premiumExpiration: data.premiumExpiration ?? null,
         adminApproved: data.adminApproved,
         status: data.status,
-      }));
+        schoolAdmin: schoolAdminId,
+        schoolAdminId: schoolAdminId,
+        schoolName: schoolName,
+        isB2B: !!schoolAdminId,
+      };
 
-      if (data.schoolAdminId) {
-        localStorage.setItem("schoolAdminId", data.schoolAdminId);
+      localStorage.setItem("studentInfo", JSON.stringify(studentInfoData));
+
+      if (schoolAdminId) {
+        localStorage.setItem("schoolAdminId", schoolAdminId);
       }
 
       const sessionRes = await axios.post(
@@ -79,7 +130,7 @@ const UserLogin = () => {
       localStorage.setItem("loginTime", Date.now());
 
       setLoading(false);
-      navigate("/user-main-page");
+      redirectToAppropriateDashboard(!!schoolAdminId, navigate, data.token, sessionRes?.data?.sessionId, studentInfoData);
     } catch (err) {
       console.error("Login error:", err.response || err.message);
       setError(err.response?.data?.message || "Something went wrong");
@@ -90,18 +141,18 @@ const UserLogin = () => {
 
   return (
     <div className="flex flex-col lg:flex-row min-h-screen font-poppins">
-      {/* Left Section (Image) */}
+      {/* Left Section (Image) - Hidden on mobile/tablet, full height on desktop like revamp */}
       <div className="hidden lg:flex lg:w-1/2 items-center justify-center">
         <img
           src={loginImage}
           alt="login"
-          className="w-full h-full object-cover rounded-lg"
+          className="w-full h-full object-cover"
         />
       </div>
 
       {/* Right Section (Form) */}
-      <div className="flex flex-col items-center justify-center p-8 w-full lg:w-1/2">
-        <div className="w-full max-w-md flex flex-col justify-center min-h-screen lg:min-h-full">
+      <div className="flex flex-col items-center justify-center px-4 py-8 sm:p-8 w-full lg:w-1/2">
+        <div className="w-full max-w-md flex flex-col justify-center my-auto py-4">
           <h1 className="text-3xl font-extrabold mb-6 text-center text-gray-800">
             Dear Student, Welcome!
           </h1>
@@ -125,12 +176,12 @@ const UserLogin = () => {
             >
               {({ isSubmitting }) => (
                 <Form className="space-y-4">
-                  <div className="relative">
+                  <div>
                     <Field
                       type="email"
                       name="email"
                       placeholder="Enter your email"
-                      className="w-full p-4 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-400"
+                      className="w-full !mt-0 p-4 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-400"
                     />
                     <ErrorMessage
                       name="email"
@@ -139,23 +190,26 @@ const UserLogin = () => {
                     />
                   </div>
 
-                  <div className="relative">
-                    <Field
-                      type={showPassword ? "text" : "password"}
-                      name="password"
-                      placeholder="Enter your password"
-                      className="w-full p-4 pr-16 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-400"
-                    />
-                    <button
-                      type="button"
-                      className="absolute inset-y-0 right-4 mt-3 flex items-center justify-center h-full text-gray-600"
-                      onClick={() => setShowPassword(!showPassword)}
-                    >
-                      <FontAwesomeIcon
-                        icon={showPassword ? faEyeSlash : faEye}
-                        size="lg"
+                  <div>
+                    <div className="relative flex items-center">
+                      <Field
+                        type={showPassword ? "text" : "password"}
+                        name="password"
+                        placeholder="Enter your password"
+                        className="w-full !mt-0 p-4 pr-16 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-400"
                       />
-                    </button>
+                      <button
+                        type="button"
+                        className="absolute right-4 top-1/2 -translate-y-1/2 flex items-center justify-center text-gray-500 hover:text-gray-700 focus:outline-none cursor-pointer"
+                        onClick={() => setShowPassword(!showPassword)}
+                        aria-label={showPassword ? "Hide password" : "Show password"}
+                      >
+                        <FontAwesomeIcon
+                          icon={showPassword ? faEyeSlash : faEye}
+                          size="lg"
+                        />
+                      </button>
+                    </div>
                     <ErrorMessage
                       name="password"
                       component="div"
@@ -191,8 +245,10 @@ const UserLogin = () => {
             <hr className="w-full border-gray-300" />
           </div>
 
-          <GoogleLogin
-            onSuccess={async (credentialResponse) => {
+          <div ref={googleBtnRef} className="google-login-wrapper w-full">
+            <GoogleLogin
+              width={googleBtnWidth}
+              onSuccess={async (credentialResponse) => {
               try {
                 const idToken = credentialResponse.credential;
 
@@ -200,14 +256,22 @@ const UserLogin = () => {
 
                 localStorage.setItem("userToken", res.data.token);
 
-                localStorage.setItem("studentInfo", JSON.stringify({
+                const schoolAdminId = res.data.schoolAdmin || res.data.schoolAdminId || null;
+                const schoolName = res.data.schoolName || res.data.school || null;
+
+                const studentInfoData = {
                   _id: res.data._id,
                   name: res.data.name,
                   email: res.data.email,
                   profileImage: res.data.profileImage,
                   isGoogleUser: res.data.isGoogleUser,
 
-                  // IMPORTANT
+                  // B2B fields — needed for correct redirect
+                  schoolAdmin: schoolAdminId,
+                  schoolAdminId: schoolAdminId,
+                  schoolName: schoolName,
+                  isB2B: !!schoolAdminId,
+
                   adminApproved: res.data.adminApproved,
                   status: res.data.status,
                   isActive: res.data.isActive,
@@ -215,14 +279,21 @@ const UserLogin = () => {
                   isPremium: res.data.isPremium ?? false,
                   planType: res.data.planType ?? "Free",
                   premiumExpiration: res.data.premiumExpiration ?? null,
-                }));
+                };
+
+                localStorage.setItem("studentInfo", JSON.stringify(studentInfoData));
+
+                if (schoolAdminId) {
+                  localStorage.setItem("schoolAdminId", schoolAdminId);
+                }
 
                 localStorage.setItem("loginTime", Date.now());
 
                 if (res.data.needsProfileCompletion) {
                   navigate("/user-create-account");
                 } else {
-                  navigate("/user-main-page");
+                  // ✅ Same B2B/B2C redirect logic as email login
+                  redirectToAppropriateDashboard(!!schoolAdminId, navigate, res.data.token, null, studentInfoData);
                 }
 
               } catch (err) {
@@ -231,7 +302,11 @@ const UserLogin = () => {
               }
             }}
             onError={() => setError("Google login failed")}
+            size="large"
+            text="signin_with"
+            shape="rectangular"
           />
+          </div>
 
           <div className="flex justify-center mt-4">
             <p className="text-sm text-gray-600">

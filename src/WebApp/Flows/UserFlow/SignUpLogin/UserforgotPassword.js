@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from "react";
 import axios from "../../../../api/axiosInstance";
+import { validateEmail } from "../../../../utils/validators";
 
 const OTP_EXPIRY_SECONDS = 300; // 5 minutes
 const OTP_RESEND_COOLDOWN_SECONDS = 60; // 1 minute     -- 18-08-2026
@@ -278,6 +279,13 @@ const ForgotPasswordModal = ({ isOpen, onClose }) => {
     e.preventDefault();
     setMessage("");
     setError("");
+
+    const emailErr = validateEmail(email);
+    if (emailErr) {
+      setError(emailErr);
+      return;
+    }
+
     setIsLoading(true);
     try {
       const response = await axios.post("/api/users/request-password-reset", {
@@ -364,6 +372,17 @@ const ForgotPasswordModal = ({ isOpen, onClose }) => {
       setError(err.response?.data?.message || "Something went wrong");
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  const handleBackToOtp = () => {
+    setOtpVerified(false);
+    setStep(2);
+    setError("");
+    setMessage("");
+    if (timeLeft <= 0) {
+      setCanResend(true);
+      setResendCooldown(0);
     }
   };
 
@@ -1040,6 +1059,23 @@ const ForgotPasswordModal = ({ isOpen, onClose }) => {
                 style={btnBase}
               >
                 {isLoading ? "Updating…" : "Reset password"}
+              </button>
+
+              <button
+                type="button"
+                onClick={handleBackToOtp}
+                style={{
+                  background: "none",
+                  border: "none",
+                  cursor: "pointer",
+                  fontSize: "13px",
+                  color: "#6b7280",
+                  textAlign: "center",
+                  padding: "4px",
+                  fontFamily: "inherit",
+                }}
+              >
+                ← Back to code
               </button>
             </form>
           )}

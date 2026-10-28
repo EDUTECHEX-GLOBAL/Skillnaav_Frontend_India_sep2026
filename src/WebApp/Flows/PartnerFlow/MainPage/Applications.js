@@ -76,6 +76,133 @@ const TypeBadge = ({ type }) => {
   );
 };
 
+// ─── CustomSelect ─────────────────────────────────────────────────────────────
+// Ensures the dropdown menu ("down box") strictly matches the width of the trigger ("top box")
+const CustomSelect = ({
+  value,
+  onChange,
+  options,
+  placeholder = "Select an option",
+  className = "",
+  buttonClassName = "",
+  menuClassName = "",
+  disabled = false,
+}) => {
+  const [isOpen, setIsOpen] = useState(false);
+  const containerRef = useRef(null);
+
+  const normalizedOptions = options.map((opt) =>
+    typeof opt === "object" && opt !== null && "value" in opt
+      ? opt
+      : { value: opt, label: opt }
+  );
+
+  const selectedOption = normalizedOptions.find(
+    (opt) => String(opt.value) === String(value)
+  );
+
+  useEffect(() => {
+    const handleOutsideClick = (e) => {
+      if (containerRef.current && !containerRef.current.contains(e.target)) {
+        setIsOpen(false);
+      }
+    };
+    if (isOpen) {
+      document.addEventListener("mousedown", handleOutsideClick);
+      document.addEventListener("touchstart", handleOutsideClick);
+    }
+    return () => {
+      document.removeEventListener("mousedown", handleOutsideClick);
+      document.removeEventListener("touchstart", handleOutsideClick);
+    };
+  }, [isOpen]);
+
+  const handleSelect = (val) => {
+    if (onChange) {
+      onChange({ target: { value: val } });
+    }
+    setIsOpen(false);
+  };
+
+  return (
+    <div
+      ref={containerRef}
+      className={`relative w-full ${className} ${isOpen ? "z-[60]" : "z-[1]"}`}
+    >
+      <button
+        type="button"
+        disabled={disabled}
+        onClick={() => setIsOpen((prev) => !prev)}
+        className={`w-full flex items-center justify-between text-left transition-all ${
+          isOpen
+            ? "ring-2 ring-blue-400 border-blue-400"
+            : "border-gray-200 hover:border-gray-300"
+        } ${
+          disabled
+            ? "opacity-60 cursor-not-allowed bg-gray-50"
+            : "cursor-pointer bg-white"
+        } ${buttonClassName}`}
+      >
+        <span
+          className={`truncate pr-2 ${
+            selectedOption
+              ? "text-gray-700 font-medium"
+              : "text-gray-400 font-normal"
+          }`}
+        >
+          {selectedOption ? selectedOption.label : placeholder}
+        </span>
+        <svg
+          className={`w-4 h-4 flex-shrink-0 text-gray-400 transition-transform duration-200 ${
+            isOpen ? "rotate-180 text-blue-500" : ""
+          }`}
+          fill="none"
+          stroke="currentColor"
+          viewBox="0 0 24 24"
+        >
+          <path
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            strokeWidth="2"
+            d="M19 9l-7 7-7-7"
+          />
+        </svg>
+      </button>
+
+      {/* Down Box (Dropdown Menu) - strictly w-full left-0 right-0 */}
+      {isOpen && (
+        <div
+          className={`absolute z-[70] left-0 right-0 w-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg max-h-60 overflow-y-auto py-1 ${menuClassName}`}
+          style={{ width: "100%", maxWidth: "100%", boxSizing: "border-box" }}
+        >
+          {normalizedOptions.length === 0 ? (
+            <div className="px-3 py-2 text-xs text-gray-400 text-center">
+              No options
+            </div>
+          ) : (
+            normalizedOptions.map((opt) => {
+              const isSelected = String(value) === String(opt.value);
+              return (
+                <div
+                  key={opt.value}
+                  onClick={() => handleSelect(opt.value)}
+                  className={`px-3 py-2 text-sm cursor-pointer transition-colors break-words leading-relaxed ${
+                    isSelected
+                      ? "bg-blue-50 text-blue-700 font-semibold"
+                      : "text-gray-700 hover:bg-blue-50/70 hover:text-blue-600"
+                  }`}
+                >
+                  {opt.label}
+                </div>
+              );
+            })
+          )}
+        </div>
+      )}
+    </div>
+  );
+};
+
 const InternshipList = () => {
   const [internships, setInternships] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -1076,21 +1203,23 @@ const InternshipList = () => {
   return (
     <div className="font-poppins max-w-5xl mx-auto px-4 py-6">
       {/* ── Page Header ── */}
-      <div className="flex justify-between items-center mb-6">
+      <div className="flex flex-wrap items-center justify-between gap-2.5 mb-2.5">
         <div>
-          <h2 className="text-2xl font-bold text-gray-900">My Internships</h2>
-          <p className="text-sm text-gray-400 mt-0.5">
+          <h2 className="text-xl sm:text-2xl font-bold text-gray-900 leading-tight">
+            My Internships
+          </h2>
+          <p className="text-xs sm:text-sm text-gray-500 mt-0.5">
             Manage your posted internships and candidates
           </p>
         </div>
         {partnerData && (
           <div
-            className={`px-3 py-1.5 rounded-full text-xs font-semibold flex items-center gap-1.5 ${
+            className={`px-3 py-1.5 rounded-full text-xs font-semibold flex items-center gap-2 whitespace-nowrap shrink-0 border shadow-xs ${
               partnerData.isPremium
                 ? partnerData.planType === "Premium Plus"
-                  ? "bg-purple-100 text-purple-700"
-                  : "bg-blue-100 text-blue-700"
-                : "bg-gray-100 text-gray-600"
+                  ? "bg-purple-50 text-purple-700 border-purple-200"
+                  : "bg-blue-50 text-blue-700 border-blue-200"
+                : "bg-gray-100 text-gray-600 border-gray-200"
             }`}
           >
             {partnerData.isPremium && (
@@ -1103,11 +1232,13 @@ const InternshipList = () => {
                 }
               />
             )}
-            {partnerData.planType === "Freemium"
-              ? "Free Plan"
-              : partnerData.planType}
+            <span>
+              {partnerData.planType === "Freemium"
+                ? "Free Plan"
+                : partnerData.planType}
+            </span>
             {partnerData.premiumExpiration && partnerData.isPremium && (
-              <span className="opacity-60 ml-1">
+              <span className="opacity-75 font-normal ml-0.5">
                 · Expires{" "}
                 {new Date(partnerData.premiumExpiration).toLocaleDateString()}
               </span>
@@ -1129,7 +1260,7 @@ const InternshipList = () => {
             value={searchQuery}
             onChange={handleSearchChange}
             placeholder="Search by title, company, location…"
-            className="!mt-0 w-full pl-9 pr-9 py-2 text-sm rounded-lg border border-gray-200 focus:outline-none focus:ring-2 focus:ring-blue-400 bg-white placeholder-gray-400 transition"
+            className="!mt-0 w-full !h-10 pl-9 pr-9 py-2 text-sm rounded-lg border border-gray-200 focus:outline-none focus:ring-2 focus:ring-blue-400 bg-white placeholder-gray-400 transition shadow-xs"
           />
           {isSearching && (
             <div className="absolute right-3 top-1/2 -translate-y-1/2">
@@ -1180,10 +1311,10 @@ const InternshipList = () => {
       </div>
 
       {/* ── Filters: Type / Mode / Level ── */}
-      <div className="grid grid-cols-3 gap-3 mb-5">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-5">
         <div className="flex flex-col gap-1">
           <label className="text-xs font-medium text-gray-500">Type</label>
-          <select
+          <CustomSelect
             value={filterType}
             onChange={(e) => {
               setFilterType(e.target.value);
@@ -1198,17 +1329,14 @@ const InternshipList = () => {
                   filterLevel,
                 );
             }}
-            className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-blue-400 transition cursor-pointer"
-          >
-            <option>All Types</option>
-            <option>Free</option>
-            <option>Stipend</option>
-            <option>Paid</option>
-          </select>
+            options={["All Types", "Free", "Stipend", "Paid"]}
+            placeholder="Select Type"
+            buttonClassName="h-10 px-3 border border-gray-200 rounded-lg text-sm bg-white text-gray-700"
+          />
         </div>
         <div className="flex flex-col gap-1">
           <label className="text-xs font-medium text-gray-500">Mode</label>
-          <select
+          <CustomSelect
             value={filterMode}
             onChange={(e) => {
               setFilterMode(e.target.value);
@@ -1223,17 +1351,14 @@ const InternshipList = () => {
                   filterLevel,
                 );
             }}
-            className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-blue-400 transition cursor-pointer"
-          >
-            <option>All Modes</option>
-            <option>Online</option>
-            <option>Offline</option>
-            <option>Hybrid</option>
-          </select>
+            options={["All Modes", "Online", "Offline", "Hybrid"]}
+            placeholder="Select Mode"
+            buttonClassName="h-10 px-3 border border-gray-200 rounded-lg text-sm bg-white text-gray-700"
+          />
         </div>
         <div className="flex flex-col gap-1">
           <label className="text-xs font-medium text-gray-500">Level</label>
-          <select
+          <CustomSelect
             value={filterLevel}
             onChange={(e) => {
               setFilterLevel(e.target.value);
@@ -1248,13 +1373,10 @@ const InternshipList = () => {
                   e.target.value,
                 );
             }}
-            className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-blue-400 transition cursor-pointer"
-          >
-            <option>All Levels</option>
-            <option>Basic</option>
-            <option>Intermediate</option>
-            <option>Advanced</option>
-          </select>
+            options={["All Levels", "Basic", "Intermediate", "Advanced"]}
+            placeholder="Select Level"
+            buttonClassName="h-10 px-3 border border-gray-200 rounded-lg text-sm bg-white text-gray-700"
+          />
         </div>
       </div>
 
